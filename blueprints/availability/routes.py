@@ -40,10 +40,6 @@ def availability():
                 stream = io.StringIO(file.stream.read().decode('UTF8'))
                 reader = csv.DictReader(stream)
 
-                added_count = 0
-                updated_count = 0
-                skipped_count = 0
-
                 for row in reader:
                     user = User.query.filter_by(name=row['name']).first()
                     if not user:
@@ -55,60 +51,17 @@ def availability():
                     start_time = datetime.strptime(row['start_time'], '%H:%M').time()
                     end_time = datetime.strptime(row['end_time'], '%H:%M').time()
 
-                    # Check if this exact availability record already exists
-                    existing = Availability.query.filter_by(
+                    new_avail = Availability(
                         user_id=user.user_id,
                         term_id=active_term.term_id,
                         day_of_week=day,
                         start_time=start_time,
                         end_time=end_time
-                    ).first()
-
-                    if existing:
-                        # Exact duplicate found - skip it
-                        skipped_count += 1
-                        continue
-
-                    # Check if there's an overlapping availability for this user/term/day
-                    overlapping = Availability.query.filter_by(
-                        user_id=user.user_id,
-                        term_id=active_term.term_id,
-                        day_of_week=day
-                    ).filter(
-                        ((Availability.start_time <= start_time) & (Availability.end_time > start_time)) |
-                        ((Availability.start_time < end_time) & (Availability.end_time >= end_time)) |
-                        ((Availability.start_time >= start_time) & (Availability.end_time <= end_time))
-                    ).first()
-
-                    if overlapping:
-                        # Update the existing overlapping record with new times
-                        overlapping.start_time = start_time
-                        overlapping.end_time = end_time
-                        updated_count += 1
-                    else:
-                        # No duplicate or overlap - add new record
-                        new_avail = Availability(
-                            user_id=user.user_id,
-                            term_id=active_term.term_id,
-                            day_of_week=day,
-                            start_time=start_time,
-                            end_time=end_time
-                        )
-                        db.session.add(new_avail)
-                        added_count += 1
+                    )
+                    db.session.add(new_avail)
 
                 db.session.commit()
-                
-                # Provide detailed feedback
-                message_parts = []
-                if added_count > 0:
-                    message_parts.append(f'{added_count} new records added')
-                if updated_count > 0:
-                    message_parts.append(f'{updated_count} records updated')
-                if skipped_count > 0:
-                    message_parts.append(f'{skipped_count} duplicates skipped')
-                
-                flash(f"CSV upload complete: {', '.join(message_parts)}!", 'success')
+                flash('CSV data uploaded successfully!', 'success')
 
             except Exception as e:
                 db.session.rollback()
@@ -124,58 +77,103 @@ def availability():
                 student_names = request.form.getlist('student_name[]')
                 days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
-                for i, name in enumerate(student_names):
-                    if not name.strip():
-                        continue
+                # Get all day columns once
+                day_blocks = {day: request.form.getlist(f'{day}[]') for day in days}
 
-                    user = User.query.filter_by(name=name.strip()).first()
-                    if not user:
+                # 1) Aggregate non-empty raw blocks by (student_name, day_key)
+                #    Example: aggregated[('Alice', 'Mon')] = ['09:00-12:00', '13:00-17:00']
+                aggregated = {}
+
+                for row_index, raw_name in enumerate(student_names):
+                    name = (raw_name or "").strip()
+                    if not name:
                         continue
 
                     for day in days:
-                        block = request.form.getlist(f'{day}[]')[i]
-                        if not block.strip():
-                            Availability.query.filter_by(
-                                user_id=user.user_id,
-                                term_id=active_term.term_id,
-                                day_of_week=day.capitalize()[:3]
-                            ).delete()
+                        blocks_list = day_blocks.get(day, [])
+                        cell_value = (
+                            blocks_list[row_index].strip()
+                            if row_index < len(blocks_list) and blocks_list[row_index] is not None
+                            else ''
+                        )
+
+                        if not cell_value:
+                            continue  # this row doesn't change this (user, day)
+
+                        day_key = day.capitalize()[:3]  # 'mon' -> 'Mon', etc.
+
+                        # Allow multiple blocks separated by commas, e.g. "09:00-12:00, 13:00-17:00"
+                        for segment in cell_value.split(','):
+                            seg = segment.strip()
+                            if not seg:
+                                continue
+                            aggregated.setdefault((name, day_key), []).append(seg)
+
+                any_error = False
+
+                # 2) For each (user, day), parse all blocks; then replace DB rows for that (user, day)
+                for (student_name, day_key), blocks in aggregated.items():
+                    user = User.query.filter_by(name=student_name).first()
+                    if not user:
+                        continue
+
+                    parsed_blocks = []
+
+                    for raw_block in blocks:
+                        # Normalize block: replace unicode dashes with normal hyphen
+                        block = raw_block.replace('–', '-').strip()
+
+                        # Must contain exactly one '-' separating start and end
+                        if '-' not in block:
+                            any_error = True
+                            flash(
+                                f"Invalid block '{raw_block}' for {student_name} on {day_key}. "
+                                "Use HH:MM-HH:MM, e.g. 09:00-12:00.",
+                                'error'
+                            )
                             continue
 
                         try:
-                            start, end = [t.strip() for t in block.split('-')]
+                            start_str, end_str = [t.strip() for t in block.split('-', 1)]
 
-                            # Try 24-hour format first
-                            try:
-                                start_time = datetime.strptime(start, '%H:%M').time()
-                                end_time = datetime.strptime(end, '%H:%M').time()
-                            except ValueError:
-                                # Fallback for AM/PM formats (12-hour)
-                                try:
-                                    start_time = datetime.strptime(start, '%I:%M %p').time()
-                                    end_time = datetime.strptime(end, '%I:%M %p').time()
-                                except ValueError:
-                                    start_time = datetime.strptime(start, '%I%p').time()
-                                    end_time = datetime.strptime(end, '%I%p').time()
+                            # STRICT 24-hour format only
+                            start_time = datetime.strptime(start_str, '%H:%M').time()
+                            end_time = datetime.strptime(end_str, '%H:%M').time()
 
+                            parsed_blocks.append((start_time, end_time))
+
+                        except ValueError:
+                            any_error = True
+                            flash(
+                                f"Invalid time format in block '{raw_block}' for {student_name} on {day_key}. "
+                                "Use 24-hour format like 09:00-17:00 (multiple: 09:00-12:00, 13:00-17:00).",
+                                'error'
+                            )
+
+                    # If at least one block parsed correctly, replace that user/day in the DB
+                    if parsed_blocks:
+                        Availability.query.filter_by(
+                            user_id=user.user_id,
+                            term_id=active_term.term_id,
+                            day_of_week=day_key
+                        ).delete()
+
+                        for start_time, end_time in parsed_blocks:
                             new_avail = Availability(
                                 user_id=user.user_id,
                                 term_id=active_term.term_id,
-                                day_of_week=day.capitalize()[:3],
+                                day_of_week=day_key,
                                 start_time=start_time,
                                 end_time=end_time
                             )
                             db.session.add(new_avail)
 
-                        except ValueError:
-                            flash(
-                                f"Invalid time format for {name}'s {day.capitalize()} entry. "
-                                "Use 24-hour format like 09:00-17:00.",
-                                'error'
-                            )
-
                 db.session.commit()
-                flash('Availability updated successfully!', 'success')
+
+                if any_error:
+                    flash('Availability updated (some blocks had errors). Check messages above.', 'error')
+                else:
+                    flash('Availability updated successfully!', 'success')
 
             except Exception as e:
                 db.session.rollback()
@@ -207,7 +205,18 @@ def availability():
         day_key = a.day_of_week[:3].capitalize()
         start_str = a.start_time.strftime("%H:%M")
         end_str = a.end_time.strftime("%H:%M")
-        availability_data[user.name][day_key] = f"{start_str}-{end_str}" if a.start_time and a.end_time else ""
+        new_block = f"{start_str}-{end_str}"
+
+        if not a.start_time or not a.end_time:
+            continue
+
+        existing = availability_data[user.name].get(day_key, "")
+        if existing:
+            # Append another block for that day, comma-separated
+            availability_data[user.name][day_key] = existing + ", " + new_block
+        else:
+            availability_data[user.name][day_key] = new_block
+    
 
     return render_template(
         'availability_index.html',
@@ -215,5 +224,3 @@ def availability():
         active_term=active_term,
         available_terms=available_terms
     )
-
-
