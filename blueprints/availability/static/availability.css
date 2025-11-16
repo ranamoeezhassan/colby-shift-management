@@ -163,6 +163,23 @@ input[type="file"] {
 }
 
 /* Buttons */
+.row-clear-btn {
+    background: #ffffff;
+    color: #d9534f;        
+    border: 1px solid #d9534f;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.row-clear-btn:hover {
+    background: #d9534f;   
+    color: #ffffff;          
+    border-color: #d9534f;
+}
+
 .dashboard-btn {
     display: inline-block;
     padding: 12px 20px;
