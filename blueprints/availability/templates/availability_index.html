@@ -89,10 +89,18 @@ Jane Smith,Tuesday,13:00,17:30</pre>
                             <tr>
                                 <td><input type="text" name="student_name[]" value="{{ student }}" readonly></td>
                                 {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
-                                <td><input type="text" name="{{ d }}[]" value="{{ days[d] }}" placeholder="e.g. 09:00-17:00"></td>
+                                <td>
+                                    <input
+                                        type="text"
+                                        name="{{ d.lower() }}[]"
+                                        value="{{ days.get(d, '') }}"
+                                        placeholder="e.g. 09:00-17:00"
+                                    >
+                                </td>
                                 {% endfor %}
                             </tr>
                             {% endfor %}
+
 
                             <!-- New Entry Row -->
                             <tr style="background: #f8f9fb;">
