@@ -82,6 +82,7 @@ Jane Smith,Tuesday,13:00,17:30</pre>
                                 <th>Fri</th>
                                 <th>Sat</th>
                                 <th>Sun</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -98,6 +99,16 @@ Jane Smith,Tuesday,13:00,17:30</pre>
                                     >
                                 </td>
                                 {% endfor %}
+                                <td>
+                                    <button
+                                        type="submit"
+                                        name="clear_row"
+                                        value="{{ student }}"
+                                        class="row-clear-btn"
+                                    >
+                                        🗑 Clear
+                                    </button>
+                                </td>
                             </tr>
                             {% endfor %}
 

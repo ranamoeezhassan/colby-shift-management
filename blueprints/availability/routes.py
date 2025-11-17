@@ -26,6 +26,28 @@ def availability():
 
     if request.method == 'POST':
         action = request.form.get('action')
+        
+        # -------------------
+        # ROW CLEAR (delete all availability for a student in this term)
+        # -------------------
+        clear_name = request.form.get('clear_row')
+        if clear_name:
+            try:
+                user = User.query.filter_by(name=clear_name.strip()).first()
+                if not user:
+                    flash(f"User '{clear_name}' not found. Nothing was cleared.", 'error')
+                else:
+                    Availability.query.filter_by(
+                        user_id=user.user_id,
+                        term_id=active_term.term_id
+                    ).delete()
+                    db.session.commit()
+                    flash(f"Cleared all availability for {clear_name} in this term.", 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error clearing availability for {clear_name}: {e}", 'error')
+
+            return redirect(url_for('availability.availability', term_id=active_term.term_id))
 
         # -------------------
         # CSV UPLOAD
@@ -40,28 +62,71 @@ def availability():
                 stream = io.StringIO(file.stream.read().decode('UTF8'))
                 reader = csv.DictReader(stream)
 
+                # Aggregate parsed CSV blocks by (user_id, day_key)
+                # Example: aggregated[(1, 'Mon')] = [(09:00, 12:00), (13:00, 17:00)]
+                aggregated = {}
+                any_error = False
+
                 for row in reader:
-                    user = User.query.filter_by(name=row['name']).first()
-                    if not user:
+                    name = (row.get('name') or '').strip()
+                    day_raw = (row.get('day_of_week') or '').strip()
+                    start_raw = (row.get('start_time') or '').strip()
+                    end_raw = (row.get('end_time') or '').strip()
+
+                    if not name or not day_raw or not start_raw or not end_raw:
+                        any_error = True
+                        flash("CSV row missing required fields (name, day_of_week, start_time, end_time).", 'error')
                         continue
 
-                    # Normalize day names to 3-letter format
-                    day = row['day_of_week'].strip().capitalize()[:3]
+                    user = User.query.filter_by(name=name).first()
+                    if not user:
+                        any_error = True
+                        flash(f"User '{name}' from CSV not found in the system. Row skipped.", 'error')
+                        continue
 
-                    start_time = datetime.strptime(row['start_time'], '%H:%M').time()
-                    end_time = datetime.strptime(row['end_time'], '%H:%M').time()
+                    # Normalize day to 3-letter format
+                    day_key = day_raw.capitalize()[:3]  # e.g. Monday -> Mon, mon -> Mon
 
-                    new_avail = Availability(
-                        user_id=user.user_id,
+                    try:
+                        start_time = datetime.strptime(start_raw, '%H:%M').time()
+                        end_time = datetime.strptime(end_raw, '%H:%M').time()
+                    except ValueError:
+                        any_error = True
+                        flash(
+                            f"Invalid time format in CSV row for {name} on {day_raw}: "
+                            f"'{start_raw}-{end_raw}'. Use 24-hour HH:MM.",
+                            'error'
+                        )
+                        continue
+
+                    aggregated.setdefault((user.user_id, day_key), []).append((start_time, end_time))
+
+                # Now apply changes: for each (user_id, day_key) in CSV, overwrite that day
+                for (user_id, day_key), blocks in aggregated.items():
+                    # Delete existing availability for this user/day/term
+                    Availability.query.filter_by(
+                        user_id=user_id,
                         term_id=active_term.term_id,
-                        day_of_week=day,
-                        start_time=start_time,
-                        end_time=end_time
-                    )
-                    db.session.add(new_avail)
+                        day_of_week=day_key
+                    ).delete()
+
+                    # Insert all blocks from CSV for that day
+                    for start_time, end_time in blocks:
+                        new_avail = Availability(
+                            user_id=user_id,
+                            term_id=active_term.term_id,
+                            day_of_week=day_key,
+                            start_time=start_time,
+                            end_time=end_time
+                        )
+                        db.session.add(new_avail)
 
                 db.session.commit()
-                flash('CSV data uploaded successfully!', 'success')
+
+                if any_error:
+                    flash('CSV processed with some errors. Check messages above for details.', 'error')
+                else:
+                    flash('CSV data uploaded successfully!', 'success')
 
             except Exception as e:
                 db.session.rollback()
