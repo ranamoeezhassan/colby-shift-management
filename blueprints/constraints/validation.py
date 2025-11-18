@@ -38,20 +38,11 @@ class AutomaticRejectionSystem:
         """
         duration = DurationValidator.get_duration_minutes(start_time, end_time)
         
-        rejection = RejectedShift(
-            term_id=term_id,
-            user_id=user_id,
-            proposed_start_time=start_time,
-            proposed_end_time=end_time,
-            proposed_date=shift_date,
-            duration_minutes=duration,
-            rejection_reason=reason,
-            rejection_type=rejection_type,
-            schedule_generation_session=session_id or str(uuid.uuid4())
+        # Use the compatibility wrapper method to log the rejection
+        RejectedShift.log_rejection(
+            term_id, user_id, start_time, end_time, shift_date, 
+            reason, duration
         )
-        
-        db.session.add(rejection)
-        db.session.commit()
     
     @staticmethod
     def auto_reject_short_shifts(term_id: int, proposed_shifts: List[Dict], 
@@ -130,12 +121,20 @@ class AutomaticRejectionSystem:
         Returns:
             Dictionary with rejection statistics
         """
-        query = RejectedShift.query.filter_by(term_id=term_id)
+        # Get rejection stats from Policy JSON data
+        policy = Policy.get_policy_for_term(term_id)
+        if not policy or not policy.rejected_shifts:
+            return {
+                'total_rejections': 0,
+                'duration_rejections': 0,
+                'avg_rejected_duration': 0,
+                'shortest_rejected': 0,
+                'most_recent': None
+            }
         
+        rejections = policy.rejected_shifts
         if session_id:
-            query = query.filter_by(schedule_generation_session=session_id)
-            
-        rejections = query.all()
+            rejections = [r for r in rejections if r.get('session_id') == session_id]
         
         if not rejections:
             return {
@@ -146,16 +145,16 @@ class AutomaticRejectionSystem:
                 'most_recent': None
             }
         
-        duration_rejections = [r for r in rejections if r.rejection_type == 'duration']
-        durations = [r.duration_minutes for r in rejections]
+        duration_rejections = [r for r in rejections if r.get('rejection_type') == 'duration']
+        durations = [r.get('duration_minutes', 0) for r in rejections]
         
         return {
             'total_rejections': len(rejections),
             'duration_rejections': len(duration_rejections),
-            'avg_rejected_duration': sum(durations) / len(durations),
-            'shortest_rejected': min(durations),
-            'longest_rejected': max(durations),
-            'most_recent': max(rejections, key=lambda r: r.created_at).created_at,
+            'avg_rejected_duration': sum(durations) / len(durations) if durations else 0,
+            'shortest_rejected': min(durations) if durations else 0,
+            'longest_rejected': max(durations) if durations else 0,
+            'most_recent': max(rejections, key=lambda r: r.get('created_at', '')).get('created_at'),
             'session_id': session_id
         }
 
@@ -236,21 +235,11 @@ class AutomaticSplitSystem:
         split_reason = (f"Automatic split: {original_duration} minutes exceeds "
                        f"maximum {max_duration} minutes")
         
-        split_log = SplitShift(
-            term_id=term_id,
-            user_id=user_id,
-            original_start_time=start_time,
-            original_end_time=end_time,
-            original_duration_minutes=original_duration,
-            proposed_date=shift_date,
-            split_count=split_count,
-            break_minutes=min_break,
-            split_reason=split_reason,
-            schedule_generation_session=session_id or str(uuid.uuid4())
+        # Use the compatibility wrapper method to log the split
+        SplitShift.log_split(
+            term_id, user_id, start_time, end_time, shift_date, 
+            split_count, min_break, split_reason
         )
-        
-        db.session.add(split_log)
-        db.session.commit()
         
         return split_shifts
     
@@ -325,15 +314,22 @@ class AutomaticSplitSystem:
         Returns:
             Dictionary with split statistics
         """
-        from models import SplitShift
+        # Get split stats from Policy JSON data
+        policy = Policy.get_policy_for_term(term_id)
+        if not policy or not policy.split_shifts:
+            return {
+                'total_splits': 0,
+                'total_original_shifts': 0,
+                'avg_original_duration': 0,
+                'avg_split_count': 0,
+                'total_time_saved': 0,
+                'most_recent': None
+            }
         
-        query = SplitShift.query.filter_by(term_id=term_id)
-        
+        splits = policy.split_shifts
         if session_id:
-            query = query.filter_by(schedule_generation_session=session_id)
+            splits = [s for s in splits if s.get('session_id') == session_id]
             
-        splits = query.all()
-        
         if not splits:
             return {
                 'total_splits': 0,
@@ -344,9 +340,9 @@ class AutomaticSplitSystem:
                 'most_recent': None
             }
         
-        original_durations = [s.original_duration_minutes for s in splits]
-        split_counts = [s.split_count for s in splits]
-        max_allowed = Policy.get_policy_for_term(term_id).max_shift_length
+        original_durations = [s.get('original_duration_minutes', 0) for s in splits]
+        split_counts = [s.get('split_count', 0) for s in splits]
+        max_allowed = policy.max_shift_length
         
         # Calculate time saved (excess time that was eliminated)
         time_saved = sum(max(0, duration - max_allowed) for duration in original_durations)
@@ -354,11 +350,11 @@ class AutomaticSplitSystem:
         return {
             'total_splits': len(splits),
             'total_original_shifts': len(splits),
-            'avg_original_duration': sum(original_durations) / len(original_durations),
-            'avg_split_count': sum(split_counts) / len(split_counts),
-            'longest_original': max(original_durations),
+            'avg_original_duration': sum(original_durations) / len(original_durations) if original_durations else 0,
+            'avg_split_count': sum(split_counts) / len(split_counts) if split_counts else 0,
+            'longest_original': max(original_durations) if original_durations else 0,
             'total_time_saved': time_saved,
-            'most_recent': max(splits, key=lambda s: s.created_at).created_at,
+            'most_recent': max(splits, key=lambda s: s.get('created_at', '')).get('created_at'),
             'session_id': session_id
         }
 
@@ -366,7 +362,9 @@ class DurationValidator:
     """
     Utility class for validating shift durations against policy constraints
     Used by schedule generators and manual shift editing (Issue #26)
-"""    @staticmethod
+    """
+    
+    @staticmethod
     def validate_shift_duration(term_id: int, start_time: dt_time, end_time: dt_time) -> Tuple[bool, Optional[str]]:
         """
         Validate if a shift duration meets policy constraints

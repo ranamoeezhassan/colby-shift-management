@@ -153,8 +153,8 @@ def create_policy():
             max_shift_length=data['max_shift_length'],
             min_break_length=data['min_break_length'],
             max_break_length=data.get('max_break_length', 480),  # Default 8 hours
-            undesireable_start=data['undesirable_start'],
-            undesireable_end=data['undesirable_end'],
+            undesireable_start=data['undesireable_start'],
+            undesireable_end=data['undesireable_end'],
             updated_by=current_user.user_id
         )
         
@@ -367,7 +367,7 @@ def get_shift_constraints(term_id):
             'min_break_length': policy.min_break_length,
             'max_break_length': policy.max_break_length,
             'term_id': term_id,
-            'term_name': policy.term.term_name if policy.term else None
+            'term_name': policy.term.name if policy.term else None
         }
     })
 
@@ -1271,12 +1271,24 @@ def delete_validation_report(report_id):
 
 # Issue #32: Gap Management Routes - Avoid fragmented 15-30 minute slots
 
-@constraints_bp.route('/gap-management')
+@constraints_bp.route('/gap-management', methods=['GET', 'POST'])
 @login_required
 def gap_management():
     """Display gap management interface (Issue #32)"""
     terms = Term.query.all()
     selected_term_id = request.args.get('term_id', type=int)
+    
+    # Handle POST requests (form submissions)
+    if request.method == 'POST':
+        selected_term_id = request.form.get('term_id', type=int)
+        action = request.form.get('action')
+        
+        if action == 'detect_gaps' and selected_term_id:
+            # Redirect to the gap detection endpoint
+            return redirect(url_for('constraints.detect_gaps', term_id=selected_term_id))
+        elif action == 'analyze_term' and selected_term_id:
+            # Redirect back to GET with term_id parameter
+            return redirect(url_for('constraints.gap_management', term_id=selected_term_id))
     
     if selected_term_id:
         # Analyze gaps for selected term
