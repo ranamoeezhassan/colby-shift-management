@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
+from sqlalchemy.orm.attributes import flag_modified
 import uuid
 from datetime import datetime
 
@@ -337,6 +338,7 @@ class Policy(db.Model):
             'window_type': window_type
         }
         self.undesirable_windows.append(window_data)
+        flag_modified(self, 'undesirable_windows')
         db.session.commit()
     
     def get_undesirable_windows(self):
@@ -347,6 +349,7 @@ class Policy(db.Model):
         """Remove an undesirable time window by ID"""
         if self.undesirable_windows:
             self.undesirable_windows = [w for w in self.undesirable_windows if w.get('window_id') != window_id]
+            flag_modified(self, 'undesirable_windows')
             db.session.commit()
     
     def detect_violations_for_shift(self, shift):
@@ -357,7 +360,8 @@ class Policy(db.Model):
             self.shift_violations = []
         
         # Clear existing violations for this shift
-        self.shift_violations = [v for v in self.shift_violations if v.get('shift_id') != shift.shift_id]
+        self.shift_violations = [v for v in self.shift_violations 
+                                if v.get('shift_id') != getattr(shift, 'shift_id', None)]
         
         duration = shift.get_duration_minutes()
         
@@ -365,8 +369,8 @@ class Policy(db.Model):
         if duration < self.min_shift_length:
             violation = {
                 'violation_id': len(self.shift_violations) + 1,
-                'shift_id': shift.shift_id,
-                'term_id': shift.term_id,
+                'shift_id': getattr(shift, 'shift_id', None),
+                'term_id': getattr(shift, 'term_id', self.term_id),
                 'violation_type': 'too_short',
                 'current_duration': duration,
                 'expected_min': self.min_shift_length,
@@ -383,8 +387,8 @@ class Policy(db.Model):
         elif duration > self.max_shift_length:
             violation = {
                 'violation_id': len(self.shift_violations) + 1,
-                'shift_id': shift.shift_id,
-                'term_id': shift.term_id,
+                'shift_id': getattr(shift, 'shift_id', None),
+                'term_id': getattr(shift, 'term_id', self.term_id),
                 'violation_type': 'too_long',
                 'current_duration': duration,
                 'expected_min': self.min_shift_length,
@@ -398,6 +402,8 @@ class Policy(db.Model):
             self.shift_violations.append(violation)
         
         if violations:
+            # Mark the JSON field as modified so SQLAlchemy will save it
+            flag_modified(self, 'shift_violations')
             db.session.commit()
         
         return violations
@@ -475,6 +481,7 @@ class Policy(db.Model):
                 self.shift_gaps.append(gap)
         
         if gaps:
+            flag_modified(self, 'shift_gaps')
             db.session.commit()
         
         return gaps
@@ -552,6 +559,7 @@ class Policy(db.Model):
                 self.transition_violations.append(violation)
         
         if violations:
+            flag_modified(self, 'transition_violations')
             db.session.commit()
         
         return violations
@@ -573,6 +581,7 @@ class Policy(db.Model):
         }
         
         self.undesirable_tracking.append(tracking_entry)
+        flag_modified(self, 'undesirable_tracking')
         db.session.commit()
     
     def add_volunteer_preference(self, user_id, preference_type, notes=None):
@@ -591,6 +600,7 @@ class Policy(db.Model):
         }
         
         self.volunteer_preferences.append(preference)
+        flag_modified(self, 'volunteer_preferences')
         db.session.commit()
     
     def log_rejected_shift(self, user_id, start_time, end_time, date, reason, duration_minutes):
@@ -607,11 +617,12 @@ class Policy(db.Model):
             'proposed_date': date.isoformat() if hasattr(date, 'isoformat') else str(date),
             'duration_minutes': duration_minutes,
             'rejection_reason': reason,
-            'rejection_type': 'duration' if 'duration' in reason.lower() else 'policy',
+            'rejection_type': 'duration' if ('duration' in reason.lower() or 'minimum' in reason.lower() or 'maximum' in reason.lower()) else 'policy',
             'created_at': datetime.now().isoformat()
         }
         
         self.rejected_shifts.append(rejected_shift)
+        flag_modified(self, 'rejected_shifts')
         db.session.commit()
     
     def log_split_shift(self, user_id, original_start, original_end, date, split_count, break_minutes, reason):
@@ -637,6 +648,7 @@ class Policy(db.Model):
         }
         
         self.split_shifts.append(split_shift)
+        flag_modified(self, 'split_shifts')
         db.session.commit()
     
     def log_policy_change(self, user_id, change_type, field_name=None, old_value=None, new_value=None, reason=None):
@@ -657,6 +669,7 @@ class Policy(db.Model):
         }
         
         self.audit_log.append(audit_entry)
+        flag_modified(self, 'audit_log')
         db.session.commit()
     
     def generate_validation_report(self, user_id):
@@ -684,6 +697,7 @@ class Policy(db.Model):
         }
         
         self.validation_reports.append(report)
+        flag_modified(self, 'validation_reports')
         db.session.commit()
         
         return report

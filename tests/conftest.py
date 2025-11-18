@@ -14,6 +14,7 @@ from models import db, User, Term, Availability, StaffingNeeds
 def app():
     """Create and configure a test app"""
     from flask import Flask
+    from flask_login import LoginManager
     
     # Create Flask app for testing
     app = Flask(__name__)
@@ -27,6 +28,24 @@ def app():
     
     # Initialize database
     db.init_app(app)
+    
+    # Initialize login manager for route testing
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'auth.shiftManagementLogin'  # Correct login route name
+    
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
+    
+    # Register blueprints for route testing
+    from blueprints.constraints import constraints_bp
+    from blueprints.auth import auth_bp
+    # Import routes to register them
+    from blueprints.constraints import routes as constraints_routes
+    from blueprints.auth import routes as auth_routes
+    app.register_blueprint(constraints_bp)
+    app.register_blueprint(auth_bp)
     
     return app
 
