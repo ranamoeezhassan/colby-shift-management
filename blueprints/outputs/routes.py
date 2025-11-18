@@ -11,6 +11,35 @@ try:
 except ImportError:
     ICALENDAR_AVAILABLE = False
 
+def _get_default_week_index(all_weeks, explicit_week_index=None):
+    """
+    Helper to choose which week to display in calendar-style views.
+    
+    - If explicit_week_index is provided, it is clamped to valid bounds.
+    - Otherwise, the week containing today's date is selected when possible.
+    - If today falls outside the available range, the closest week (first/last)
+      is used instead.
+    """
+    if not all_weeks:
+        return 0
+
+    # If caller passed a specific week, honor it (within range)
+    if explicit_week_index is not None:
+        return max(0, min(explicit_week_index, len(all_weeks) - 1))
+
+    today = date.today()
+
+    # Try to find the week that contains today
+    for idx, week in enumerate(all_weeks):
+        # week objects here are dicts with 'week_start' / 'week_end'
+        if week['week_start'] <= today <= week['week_end']:
+            return idx
+
+    # If no exact match, clamp to nearest week
+    if today < all_weeks[0]['week_start']:
+        return 0
+    return len(all_weeks) - 1
+
 # Outputs & Access
 # Features: Live preview, CSV export, iCal generation, student views, etc.
 
@@ -412,10 +441,10 @@ def student_view(user_id):
     # Convert to sorted list
     all_weeks = sorted(weeks_dict.values(), key=lambda x: x['week_start'])
     
-    # Get week index from query param (default to 0)
-    week_index = request.args.get('week', 0, type=int)
-    week_index = max(0, min(week_index, len(all_weeks) - 1)) if all_weeks else 0
-    
+    # Choose which week to show: default to the current calendar week when possible
+    week_param = request.args.get('week', type=int)
+    week_index = _get_default_week_index(all_weeks, week_param)
+
     current_week = all_weeks[week_index] if all_weeks else None
     
     # Calculate weekly stats for current week only
@@ -468,10 +497,10 @@ def public_schedule_view(token):
     # Convert to sorted list
     all_weeks = sorted(weeks_dict.values(), key=lambda x: x['week_start'])
     
-    # Get week index from query param (default to 0)
-    week_index = request.args.get('week', 0, type=int)
-    week_index = max(0, min(week_index, len(all_weeks) - 1)) if all_weeks else 0
-    
+    # Choose which week to show: default to the current calendar week when possible
+    week_param = request.args.get('week', type=int)
+    week_index = _get_default_week_index(all_weeks, week_param)
+
     current_week = all_weeks[week_index] if all_weeks else None
     
     # Calculate weekly stats for current week only
@@ -771,10 +800,10 @@ def preview():
     # Convert to sorted list
     all_weeks = sorted(weeks_dict.values(), key=lambda x: x['week_start'])
     
-    # Get week index from query param (default to 0)
-    week_index = request.args.get('week', 0, type=int)
-    week_index = max(0, min(week_index, len(all_weeks) - 1)) if all_weeks else 0
-    
+    # Choose which week to show: default to the current calendar week when possible
+    week_param = request.args.get('week', type=int)
+    week_index = _get_default_week_index(all_weeks, week_param)
+
     current_week = all_weeks[week_index] if all_weeks else None
     
     return render_template('preview.html', 
