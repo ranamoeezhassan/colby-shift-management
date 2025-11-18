@@ -16,8 +16,10 @@ def app():
     from flask import Flask
     from flask_login import LoginManager
     
-    # Create Flask app for testing
-    app = Flask(__name__)
+    # Create Flask app for testing with proper template and static folders
+    app = Flask(__name__, 
+                template_folder=os.path.join(project_root, 'templates'),
+                static_folder=os.path.join(project_root, 'static'))
     
     # Configure for testing
     app.config['TESTING'] = True
@@ -46,6 +48,32 @@ def app():
     from blueprints.auth import routes as auth_routes
     app.register_blueprint(constraints_bp)
     app.register_blueprint(auth_bp)
+    
+    # Register dummy blueprints for other app areas to prevent URL build errors
+    from flask import Blueprint
+    
+    # Create dummy blueprints to satisfy base template navigation
+    availability_bp = Blueprint('availability', __name__, url_prefix='/availability')
+    staffing_bp = Blueprint('staffing', __name__, url_prefix='/staffing') 
+    scheduler_bp = Blueprint('scheduler', __name__, url_prefix='/scheduler')
+    outputs_bp = Blueprint('outputs', __name__, url_prefix='/outputs')
+    
+    @availability_bp.route('/')
+    def index(): return "Availability Index"
+    
+    @staffing_bp.route('/')
+    def index(): return "Staffing Index"
+    
+    @scheduler_bp.route('/')
+    def index(): return "Scheduler Index"
+    
+    @outputs_bp.route('/')
+    def index(): return "Outputs Index"
+    
+    app.register_blueprint(availability_bp)
+    app.register_blueprint(staffing_bp)
+    app.register_blueprint(scheduler_bp)
+    app.register_blueprint(outputs_bp)
     
     return app
 

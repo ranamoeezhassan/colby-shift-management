@@ -153,8 +153,8 @@ def create_policy():
             max_shift_length=data['max_shift_length'],
             min_break_length=data['min_break_length'],
             max_break_length=data.get('max_break_length', 480),  # Default 8 hours
-            undesireable_start=data['undesirable_start'],
-            undesireable_end=data['undesirable_end'],
+            undesireable_start=data['undesireable_start'],
+            undesireable_end=data['undesireable_end'],
             updated_by=current_user.user_id
         )
         
