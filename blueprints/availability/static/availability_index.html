@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Availability Management - Colby Shift Management</title>
+  <!-- Global styles -->
+  <link rel="stylesheet" href="/static/base.css">
+  <!-- Availability-specific styles -->
+  <link rel="stylesheet" href="availability/static/availability.css">
+</head>
+<body>
+  <!-- Navbar (copied from base.html with no Jinja) -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="/" class="navbar-brand">Colby Shift Management</a>
+      <ul class="navbar-menu">
+        <li><a href="/availability/page">Availability</a></li>
+        <li><a href="/staffing">Staffing</a></li>
+        <li><a href="/constraints">Constraints</a></li>
+        <li><a href="/scheduler">Scheduler</a></li>
+        <li><a href="/outputs">Outputs</a></li>
+        <li><a href="/logout">Logout</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="page-content">
+    <div class="content-wrapper">
+      <div class="page-header">
+        <h1>Availability Management</h1>
+        <p>Manage weekly availability for students (24-hour format)</p>
+      </div>
+
+      <!-- Main content -->
+      <div class="main-content">
+        <div class="content-grid">
+          <div class="availability-section">
+            <div class="section-header">
+              <h2>📊 Student Availability</h2>
+              <p>View and edit availability schedules for all students (24-hour format)</p>
+            </div>
+
+            <div class="section-content">
+              <!-- Alerts -->
+              <div id="alert-container"></div>
+
+              <!-- Term selector -->
+              <div class="term-selector-section">
+                <div class="term-selector">
+                  <label for="term_select" class="term-label"><strong>Select Term:</strong></label>
+                  <select id="term_select" class="term-dropdown"></select>
+                </div>
+              </div>
+
+              <!-- CSV Upload -->
+              <form id="csvForm" class="upload-area">
+                <div class="upload-icon">📁</div>
+                <p class="upload-text">Upload CSV file to bulk import availability data</p>
+                <div class="file-input-wrapper">
+                  <input type="file" name="csv_file" accept=".csv" class="file-input" id="csvFile">
+                  <label for="csvFile" class="file-input-label">Choose File</label>
+                </div>
+                <button type="submit" class="btn-primary" style="margin-left: 1rem;">
+                  Upload &amp; Process
+                </button>
+              </form>
+
+              <!-- CSV Format Guide -->
+              <button type="button" class="guide-toggle" onclick="toggleGuide()">
+                📘 View CSV Format Guide
+              </button>
+
+              <div id="csvGuide" class="csv-guide" style="display: none;">
+                <h4>CSV Format Requirements:</h4>
+                <pre>name,day_of_week,start_time,end_time
+John Doe,Monday,09:00,17:00
+Jane Smith,Tuesday,13:00,17:30</pre>
+                <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
+                  <li><strong>day_of_week:</strong> Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday</li>
+                  <li><strong>Time format:</strong> 24-hour format (<code>HH:MM</code>), e.g. <code>09:00-17:00</code></li>
+                  <li><strong>Multiple entries:</strong> one row per availability block</li>
+                </ul>
+              </div>
+
+              <!-- Availability Table -->
+              <table class="availability-table">
+                <thead>
+                  <tr>
+                    <th>👤 Student Name</th>
+                    <th>Mon</th>
+                    <th>Tue</th>
+                    <th>Wed</th>
+                    <th>Thu</th>
+                    <th>Fri</th>
+                    <th>Sat</th>
+                    <th>Sun</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="availabilityBody"></tbody>
+              </table>
+
+              <div class="form-actions">
+                <button id="saveButton" class="btn-primary">💾 Save Changes</button>
+                <a href="/" class="btn-secondary">🏠 Back to Dashboard</a>
+              </div>
+            </div>
+          </div>
+        </div> <!-- /.content-grid -->
+      </div> <!-- /.main-content -->
+    </div> <!-- /.content-wrapper -->
+  </div> <!-- /.page-content -->
+
+  <!-- External JS file -->
+  <script src="availability/static/availability.js"></script>
+</body>
+</html>
