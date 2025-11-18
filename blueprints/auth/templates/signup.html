@@ -9,7 +9,7 @@
 {% block header_subtitle %}Create your account{% endblock %}
 
 {% block content %}
-<form class="login-form" method="POST" action="{{ url_for('auth.shiftManagementSignUp') }}">
+<form id="signup-form">
     <div class="form-group">
         <label for="name">Full Name</label>
         <input type="text" id="name" name="name" required>
@@ -48,6 +48,48 @@
 
     <button type="submit" class="login-btn">Create Account</button>
 </form>
+
+<script>
+  const signupForm = document.getElementById("signup-form");
+
+  signupForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const name = document.getElementById("name").value;
+    const email = document.getElementById("email").value;
+    const role = document.getElementById("role").value;
+    const password = document.getElementById("password").value;
+    const confirm_password = document.getElementById("confirm_password").value;
+
+    try {
+      const response = await fetch("{{ url_for('auth.api_signup') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          role,
+          password,
+          confirm_password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        alert(data.message || "Sign up failed.");
+        return;
+      }
+
+      alert(data.message || "Account created.");
+      window.location.href = data.redirect_url || "{{ url_for('auth.shiftManagementLogin') }}";
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong. Please try again.");
+    }
+  });
+</script>
+
 {% endblock %}
 
 {% block footer %}Already have an account? <a href="{{ url_for('auth.shiftManagementLogin') }}">Sign in here</a>{% endblock %}

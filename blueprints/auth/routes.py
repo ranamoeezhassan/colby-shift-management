@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from models import db, User
 import os
@@ -96,3 +96,67 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.shiftManagement'))
 
+
+@auth_bp.route("/api/login", methods=["POST"])
+def api_login():
+    """Login over REST API. Returns JSON instead of HTML."""
+    data = request.get_json() or {}
+
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+    remember = bool(data.get("remember", False))
+
+    if not email or not password:
+        return jsonify({"ok": False, "message": "Please fill in all fields."}), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user or not user.check_password(password) or not user.is_active:
+        return jsonify({"ok": False, "message": "Invalid email or password."}), 401
+
+    login_user(user, remember=remember)
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Login successful.",
+            "redirect_url": url_for("auth.shiftManagement"),
+        }
+    ), 200
+
+
+@auth_bp.route("/api/signup", methods=["POST"])
+def api_signup():
+    """Signup over REST API. Returns JSON instead of HTML."""
+    data = request.get_json() or {}
+
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip()
+    role = data.get("role", "").strip()
+    password = data.get("password", "").strip()
+    confirm_password = data.get("confirm_password", "").strip()
+
+    if not name or not email or not role or not password or not confirm_password:
+        return jsonify({"ok": False, "message": "Please fill in all fields."}), 400
+
+    if password != confirm_password:
+        return jsonify({"ok": False, "message": "Passwords do not match."}), 400
+
+    existing = User.query.filter_by(email=email).first()
+    if existing:
+        return jsonify(
+            {"ok": False, "message": "An account with this email already exists."}
+        ), 400
+
+    user = User(name=name, email=email, role=role)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Account created successfully.",
+            "redirect_url": url_for("auth.shiftManagementLogin"),
+        }
+    ), 201
