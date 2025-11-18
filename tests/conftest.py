@@ -49,31 +49,14 @@ def app():
     app.register_blueprint(constraints_bp)
     app.register_blueprint(auth_bp)
     
-    # Register dummy blueprints for other app areas to prevent URL build errors
+    # Register dummy blueprints for base template navigation (minimal implementation)
     from flask import Blueprint
     
-    # Create dummy blueprints to satisfy base template navigation
-    availability_bp = Blueprint('availability', __name__, url_prefix='/availability')
-    staffing_bp = Blueprint('staffing', __name__, url_prefix='/staffing') 
-    scheduler_bp = Blueprint('scheduler', __name__, url_prefix='/scheduler')
-    outputs_bp = Blueprint('outputs', __name__, url_prefix='/outputs')
-    
-    @availability_bp.route('/')
-    def index(): return "Availability Index"
-    
-    @staffing_bp.route('/')
-    def index(): return "Staffing Index"
-    
-    @scheduler_bp.route('/')
-    def index(): return "Scheduler Index"
-    
-    @outputs_bp.route('/')
-    def index(): return "Outputs Index"
-    
-    app.register_blueprint(availability_bp)
-    app.register_blueprint(staffing_bp)
-    app.register_blueprint(scheduler_bp)
-    app.register_blueprint(outputs_bp)
+    # Simple dummy routes to satisfy base.html navigation without complex logic
+    for name in ['availability', 'staffing', 'scheduler', 'outputs']:
+        bp = Blueprint(name, __name__, url_prefix=f'/{name}')
+        bp.add_url_rule('/', 'index', lambda: 'Test Page', methods=['GET'])
+        app.register_blueprint(bp)
     
     return app
 
