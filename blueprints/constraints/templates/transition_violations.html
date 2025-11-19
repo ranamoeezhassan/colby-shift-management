@@ -70,11 +70,11 @@
                     <strong>Warnings Enabled:</strong> {{ 'Yes' if policy.transition_warning_enabled else 'No' }}
                 </div>
             </div>
-                        <a href="{{ url_for('constraints.policy_config') }}" class="btn btn-secondary">
+            <a href="{{ url_for('constraints.gap_management', term_id=selected_term_id) }}" class="btn btn-secondary">
                 ⚙️ Configure Policy
             </a>
             {% else %}
-                        <p class="no-policy">No policy configured for this term. <a href="{{ url_for('constraints.policy_config') }}">Configure policy</a></p>
+            <p class="no-policy">No policy configured for this term. <a href="{{ url_for('constraints.gap_management', term_id=selected_term_id) }}">Configure policy</a></p>
             {% endif %}
         </div>
     </div>
@@ -324,25 +324,7 @@ function updateViolationAnalysis() {
     const termId = termSelect.value;
     
     if (termId) {
-        // Update URL without page refresh and load data via AJAX
-        const url = new URL(window.location);
-        url.searchParams.set('term_id', termId);
-        window.history.pushState({}, '', url);
-        
-        // Load violations data dynamically
-        loadViolationsData(termId);
-    }
-}
-
-async function loadViolationsData(termId) {
-    try {
-        // This would require a new API endpoint to return violations data as JSON
-        // For now, we'll use a soft reload approach
-        const currentUrl = new URL(window.location);
-        currentUrl.searchParams.set('term_id', termId);
-        window.location.href = currentUrl.toString();
-    } catch (error) {
-        console.error('Error loading violations data:', error);
+        window.location.href = `{{ url_for('constraints.transition_violations') }}?term_id=${termId}`;
     }
 }
 

@@ -910,40 +910,14 @@ class UndesirableShiftTracking:
         if policy:
             policy.track_undesirable_shift(user_id, shift_id, undesirable_type, weight)
 
-class VolunteerPreference(db.Model):
-    """Student volunteer preferences for different shift types"""
-    __tablename__ = 'volunteer_preferences'
-    
-    preference_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-    preference_type = db.Column(db.String(50), nullable=False)  # 'early_morning', 'late_evening', 'weekend'
-    is_volunteer = db.Column(db.Boolean, nullable=False, default=True)
-    notes = db.Column(db.Text, nullable=True)
-    created_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    
-    # Relationships
-    user = db.relationship('User', foreign_keys=[user_id], backref='volunteer_preferences')
-    created_by_user = db.relationship('User', foreign_keys=[created_by])
-    
-    def __repr__(self):
-        return f'<VolunteerPreference {self.user_id}: {self.preference_type}>'
+class VolunteerPreference:
+    """Compatibility wrapper - uses Policy.volunteer_preferences JSON field"""
     
     @classmethod
     def add_preference(cls, user_id, term_id, preference_type, notes=None):
-        """Compatibility method for legacy code"""
-        # For now, just create a preference without term association
-        # In the future, this could be enhanced to link to specific terms
-        existing = cls.query.filter_by(user_id=user_id, preference_type=preference_type).first()
-        if not existing:
-            pref = cls(
-                user_id=user_id,
-                preference_type=preference_type,
-                notes=notes,
-                created_by=user_id  # Default to self
-            )
-            db.session.add(pref)
-            db.session.commit()
+        policy = Policy.get_policy_for_term(term_id)
+        if policy:
+            policy.add_volunteer_preference(user_id, preference_type, notes)
 
 class RejectedShift:
     """Compatibility wrapper - uses Policy.rejected_shifts JSON field"""
