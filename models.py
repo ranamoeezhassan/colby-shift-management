@@ -11,12 +11,12 @@ class User(UserMixin, db.Model):
     __tablename__ = 'users'
     
     user_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String(255), nullable=False)
-    email = db.Column(db.String(255), nullable=False, unique=True)
-    role = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.Text, nullable=False)
+    email = db.Column(db.Text, nullable=False, unique=True)
+    role = db.Column(db.Text, nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     password_hash = db.Column(db.Text, nullable=False)
-    calendar_token = db.Column(db.String(255), nullable=True, unique=True)  # UUID for secure calendar feed access
+    calendar_token = db.Column(db.Text, nullable=True, unique=True)  # UUID for secure calendar feed access
     
     availability = db.relationship('Availability', back_populates='user', cascade='all, delete')
     shifts = db.relationship('Shift', back_populates='user', cascade='all, delete')
@@ -55,7 +55,7 @@ class Availability(db.Model):
     availiability_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'))
     term_id = db.Column(db.Integer, db.ForeignKey('terms.term_id'))
-    day_of_week = db.Column(db.String(20), nullable=False)
+    day_of_week = db.Column(db.Text, nullable=False)
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
     is_exception = db.Column(db.Boolean, nullable=False, default=False)
@@ -70,7 +70,7 @@ class Term(db.Model):
     __tablename__ = 'terms'
     
     term_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String(255), nullable=False)
+    name = db.Column(db.Text, nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     availability_deadline = db.Column(db.Date, nullable=False)
@@ -736,7 +736,7 @@ class StaffingNeeds(db.Model):
     day_of_week = db.Column(db.Integer, nullable=False)
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
-    role_required = db.Column(db.String(50), nullable=False)
+    role_required = db.Column(db.Text, nullable=False)
     required_count = db.Column(db.Integer, nullable=False)
     
     term = db.relationship('Term', back_populates='staffing_needs')
@@ -910,14 +910,40 @@ class UndesirableShiftTracking:
         if policy:
             policy.track_undesirable_shift(user_id, shift_id, undesirable_type, weight)
 
-class VolunteerPreference:
-    """Compatibility wrapper - uses Policy.volunteer_preferences JSON field"""
+class VolunteerPreference(db.Model):
+    """Student volunteer preferences for different shift types"""
+    __tablename__ = 'volunteer_preferences'
+    
+    preference_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
+    preference_type = db.Column(db.String(50), nullable=False)  # 'early_morning', 'late_evening', 'weekend'
+    is_volunteer = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', foreign_keys=[user_id], backref='volunteer_preferences')
+    created_by_user = db.relationship('User', foreign_keys=[created_by])
+    
+    def __repr__(self):
+        return f'<VolunteerPreference {self.user_id}: {self.preference_type}>'
     
     @classmethod
     def add_preference(cls, user_id, term_id, preference_type, notes=None):
-        policy = Policy.get_policy_for_term(term_id)
-        if policy:
-            policy.add_volunteer_preference(user_id, preference_type, notes)
+        """Compatibility method for legacy code"""
+        # For now, just create a preference without term association
+        # In the future, this could be enhanced to link to specific terms
+        existing = cls.query.filter_by(user_id=user_id, preference_type=preference_type).first()
+        if not existing:
+            pref = cls(
+                user_id=user_id,
+                preference_type=preference_type,
+                notes=notes,
+                created_by=user_id  # Default to self
+            )
+            db.session.add(pref)
+            db.session.commit()
 
 class RejectedShift:
     """Compatibility wrapper - uses Policy.rejected_shifts JSON field"""
