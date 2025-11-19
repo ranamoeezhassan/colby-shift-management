@@ -3,7 +3,7 @@
 {% block title %}Student Management - Colby Shift Management{% endblock %}
 
 {% block styles %}
-<link rel="stylesheet" href="{{ url_for('auth.static', filename='dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('constraints.static', filename='constraints.css') }}">
 <style>
 .student-management {
     max-width: 1200px;
@@ -411,7 +411,7 @@ async function loadStudents() {
         document.getElementById('students-empty').style.display = 'none';
         document.getElementById('students-table-container').style.display = 'none';
         
-        const response = await fetch('{{ url_for("auth.list_students_api") }}');
+        const response = await fetch('{{ url_for("constraints.list_students_api") }}');
         const result = await response.json();
         
         document.getElementById('students-loading').style.display = 'none';
@@ -552,8 +552,8 @@ async function saveStudentForm() {
         data.is_active = data.is_active === 'true';
         
         const url = isEdit 
-            ? `{{ url_for("auth.update_student_api", student_id=0) }}`.replace('0', studentId)
-            : '{{ url_for("auth.create_student_api") }}';
+            ? `{{ url_for("constraints.update_student_api", student_id=0) }}`.replace('0', studentId)
+            : '{{ url_for("constraints.create_student_api") }}';
             
         const method = isEdit ? 'PUT' : 'POST';
         
@@ -604,7 +604,7 @@ async function deactivateStudent(studentId) {
     }
     
     try {
-        const url = `{{ url_for("auth.delete_student_api", student_id=0) }}`.replace('0', studentId);
+        const url = `{{ url_for("constraints.delete_student_api", student_id=0) }}`.replace('0', studentId);
         
         const response = await fetch(url, {
             method: 'DELETE'
@@ -648,5 +648,5 @@ function clearAlert() {
 {% endblock %}
 
 {% block footer %}
-<a href="{{ url_for('auth.shiftManagement') }}">← Back to Dashboard</a>
+<a href="{{ url_for('constraints.index') }}">← Back to Constraints</a>
 {% endblock %}

@@ -16,7 +16,7 @@
             <a href="{{ url_for('auth.shiftManagement') }}" class="navbar-brand">Colby Shift Management</a>
             <ul class="navbar-menu">
                 {% if current_user.role != 'student' %}
-                <li><a href="{{ url_for('auth.student_management') }}">Students</a></li>
+                <li><a href="{{ url_for('constraints.student_management') }}">Students</a></li>
                 <li><a href="{{ url_for('availability.availability_page') }}">Availability</a></li>
                 <li><a href="{{ url_for('staffing.index') }}">Staffing</a></li>
                 <li><a href="{{ url_for('constraints.index') }}">Constraints</a></li>
