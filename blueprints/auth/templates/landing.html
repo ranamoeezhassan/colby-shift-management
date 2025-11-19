@@ -15,7 +15,9 @@
     <section class="dashboard-hero">
         <div class="hero-text">
             <h1>Shift Management Hub</h1>
+            {% if current_user.role != 'student' %}
             <p class="tagline">Centralize availability, scheduling, and equity tracking in one unified workspace.</p>
+            {% endif %}
             <div class="quick-stats">
                 {% if current_user.role != 'student' %}
                 {% if violation_summary %}
@@ -26,7 +28,6 @@
                     <div class="stat-label">{% if violation_summary.total_violations == 1 %}Violation{% elif
                         violation_summary.total_violations > 1 %}Violations{% else %}No Violations{% endif %}</div>
                 </div>
-                {% endif %}
                 {% endif %}
 
                 <!-- Consolidated Shift Hub Card -->
@@ -52,8 +53,10 @@
                     </div>
                     <div class="hub-range">Week: {{ dashboard_stats.week_start }} → {{ dashboard_stats.week_end }}</div>
                 </div>
+                {% endif %}
             </div>
         </div>
+        
         <div class="hero-side">
             <div class="profile-panel">
                 <h3>Your Profile</h3>
