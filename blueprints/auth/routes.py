@@ -4,6 +4,7 @@ from models import db, User
 import os
 import uuid
 from dotenv import load_dotenv
+from utils.recaptcha import verify_recaptcha
 
 from . import auth_bp
 
@@ -25,9 +26,15 @@ def shiftManagementLogin():
         email = request.form.get('email')
         password = request.form.get('password')
         remember = bool(request.form.get('remember'))
+        recaptcha_response = request.form.get('g-recaptcha-response')
         
         if not email or not password:
             flash('Please fill in all fields.', 'error')
+            return render_template('login.html')
+        
+        # Verify reCAPTCHA
+        if not verify_recaptcha(recaptcha_response):
+            flash('Please complete the reCAPTCHA verification.', 'error')
             return render_template('login.html')
         
         user = User.query.filter_by(email=email).first()
@@ -48,10 +55,16 @@ def shiftManagementSignUp():
         role = request.form.get('role')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
+        recaptcha_response = request.form.get('g-recaptcha-response')
         
         # Validation
         if not all([name, email, role, password, confirm_password]):
             flash('Please fill in all fields.', 'error')
+            return render_template('signup.html')
+        
+        # Verify reCAPTCHA
+        if not verify_recaptcha(recaptcha_response):
+            flash('Please complete the reCAPTCHA verification.', 'error')
             return render_template('signup.html')
         
         if password != confirm_password:
@@ -106,9 +119,14 @@ def api_login():
     email = data.get("email", "").strip()
     password = data.get("password", "").strip()
     remember = bool(data.get("remember", False))
+    recaptcha_response = data.get("g-recaptcha-response", "").strip()
 
     if not email or not password:
         return jsonify({"ok": False, "message": "Please fill in all fields."}), 400
+
+    # Verify reCAPTCHA
+    if not verify_recaptcha(recaptcha_response):
+        return jsonify({"ok": False, "message": "Please complete the reCAPTCHA verification."}), 400
 
     user = User.query.filter_by(email=email).first()
 
@@ -240,9 +258,14 @@ def api_signup():
     role = data.get("role", "").strip()
     password = data.get("password", "").strip()
     confirm_password = data.get("confirm_password", "").strip()
+    recaptcha_response = data.get("g-recaptcha-response", "").strip()
 
     if not name or not email or not role or not password or not confirm_password:
         return jsonify({"ok": False, "message": "Please fill in all fields."}), 400
+
+    # Verify reCAPTCHA
+    if not verify_recaptcha(recaptcha_response):
+        return jsonify({"ok": False, "message": "Please complete the reCAPTCHA verification."}), 400
 
     if password != confirm_password:
         return jsonify({"ok": False, "message": "Passwords do not match."}), 400

@@ -25,6 +25,10 @@ app = Flask(__name__)
 # Configuration for Heroku
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
+# reCAPTCHA configuration
+app.config['RECAPTCHA_SITE_KEY'] = os.environ.get('RECAPTCHA_SITE_KEY')
+app.config['RECAPTCHA_SECRET_KEY'] = os.environ.get('RECAPTCHA_SECRET_KEY')
+
 # Enable CORS for API endpoints
 CORS(app)
 
@@ -126,10 +130,10 @@ with app.app_context():
         print(f"Error creating database tables: {e}")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
-    if os.environ.get('DATABASE_URL'):
-        # Production
+    if os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL'):
+        # Production - Heroku sets PORT environment variable
+        port = int(os.environ.get('PORT', 5000))
         app.run(host='0.0.0.0', port=port)
     else:
-        # Development
-        app.run(debug=True, use_reloader=False, host='0.0.0.0', port=port)
+        # Development - run on localhost:5000
+        app.run(debug=True, host='127.0.0.1', port=5000)

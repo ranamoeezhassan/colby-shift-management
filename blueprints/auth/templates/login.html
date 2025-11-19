@@ -4,68 +4,100 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('auth.static', filename='login.css') }}">
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 {% endblock %}
 
 {% block header_subtitle %}Please sign in to your account{% endblock %}
 
 {% block content %}
+<div id="error-container" style="display: none;" class="flash-messages">
+  <div id="error-message" class="flash-message flash-error"></div>
+</div>
+
 <form id="login-form" class="login-form">
-    <div class="form-group">
-        <label for="email">Email Address</label>
-        <input type="email" id="email" name="email" required>
-    </div>
+  <div class="form-group">
+    <label for="email">Email Address</label>
+    <input type="email" id="email" name="email" required>
+  </div>
 
-    <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required>
-    </div>
+  <div class="form-group">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+  </div>
 
-    <div class="form-options">
-        <div class="remember-me">
-            <input type="checkbox" id="remember" name="remember">
-            <label for="remember">Remember me</label>
-        </div>
-        <a href="#" class="forgot-password">Forgot password?</a>
+  <div class="form-options">
+    <div class="remember-me">
+      <input type="checkbox" id="remember" name="remember">
+      <label for="remember">Remember me</label>
     </div>
+    <a href="#" class="forgot-password">Forgot password?</a>
+  </div>
 
-    <button type="submit" class="login-btn">Sign In</button>
+  {% if config.RECAPTCHA_SITE_KEY %}
+  <div class="recaptcha-container" style="margin: 20px 0;">
+    <div class="g-recaptcha" data-sitekey="{{ config.RECAPTCHA_SITE_KEY }}"></div>
+  </div>
+  {% endif %}
+
+  <button type="submit" class="login-btn">Sign In</button>
 </form>
 
 <script>
+  function showErrorMessage(message) {
+    const errorContainer = document.getElementById("error-container");
+    const errorMessage = document.getElementById("error-message");
+    errorMessage.textContent = message;
+    errorContainer.style.display = "block";
+    errorContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function hideErrorMessage() {
+    const errorContainer = document.getElementById("error-container");
+    errorContainer.style.display = "none";
+  }
+
   const form = document.getElementById("login-form");
 
   form.addEventListener("submit", async function (e) {
     e.preventDefault();
+    hideErrorMessage();
 
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
     const remember = document.getElementById("remember")?.checked || false;
 
+    // Get reCAPTCHA response
+    const recaptchaResponse = typeof grecaptcha !== 'undefined' ? grecaptcha.getResponse() : '';
+
     try {
       const response = await fetch("{{ url_for('auth.api_login') }}", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, remember }),
+        body: JSON.stringify({
+          email,
+          password,
+          remember,
+          "g-recaptcha-response": recaptchaResponse
+        }),
       });
 
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
-        alert(data.message || "Login failed.");
+        showErrorMessage(data.message || "Login failed.");
         return;
       }
 
       window.location.href = data.redirect_url || "{{ url_for('auth.shiftManagement') }}";
     } catch (err) {
       console.error(err);
-      alert("Something went wrong. Please try again.");
+      showErrorMessage("Something went wrong. Please try again.");
     }
   });
 </script>
 
 {% endblock %}
 
-{% block footer %}Don't have an account? 
-  <a href="{{ url_for('auth.shiftManagementSignUp') }}">Contact your administrator</a>
+{% block footer %}Don't have an account?
+<a href="{{ url_for('auth.shiftManagementSignUp') }}">Sign up here</a>
 {% endblock %}
-
