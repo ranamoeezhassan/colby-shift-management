@@ -5,7 +5,7 @@ Run with: python seed_data.py
 """
 
 from app import app
-from models import db, User, Term, Policy, Shift
+from models import db, User, Term, Policy, Shift, Availability, StaffingNeeds
 from datetime import date, time, timedelta, datetime
 import random
 import uuid
@@ -15,7 +15,10 @@ def seed_database():
     with app.app_context():
         # Clear existing data (optional - comment out if you want to keep existing data)
         print("Clearing existing data...")
+        # Delete child tables first to satisfy MySQL foreign key constraints
         Shift.query.delete()
+        Availability.query.delete()
+        StaffingNeeds.query.delete()
         Policy.query.delete()
         Term.query.delete()
         User.query.filter_by(role='student').delete()

@@ -1,291 +1,401 @@
-from flask import render_template, request, redirect, url_for, flash
-from flask_login import current_user
-from . import availability_bp
+from flask import Blueprint, request, jsonify, current_app, send_from_directory, Response
+from blueprints.availability import availability_bp
+from flask_login import current_user, login_required
 from models import db, User, Availability, Term
-import requests
+from datetime import datetime
 import csv
 import io
-from dotenv import load_dotenv
-from datetime import datetime
 
-# GitHub Issues #1-12: Availability & Inputs
-# Features: Availability management, CSV import, templates, deadlines, etc.
 
-@availability_bp.route('/', methods=['GET', 'POST'])
-def availability():
-    # Term selection similar to staffing: query param term_id selects active term, else latest
-    selected_term_id = request.args.get('term_id', type=int)
-    available_terms = Term.query.order_by(Term.start_date.desc()).all()
-    if selected_term_id:
-        active_term = Term.query.get(selected_term_id)
-    else:
-        active_term = available_terms[0] if available_terms else None
-    if not active_term:
-        # No term exists yet; instruct user to create one on staffing page
-        return redirect(url_for('staffing.index'))
 
-    if request.method == 'POST':
-        action = request.form.get('action')
-        
-        # -------------------
-        # ROW CLEAR (delete all availability for a student in this term)
-        # -------------------
-        clear_name = request.form.get('clear_row')
-        if clear_name:
-            try:
-                user = User.query.filter_by(name=clear_name.strip()).first()
-                if not user:
-                    flash(f"User '{clear_name}' not found. Nothing was cleared.", 'error')
-                else:
-                    Availability.query.filter_by(
-                        user_id=user.user_id,
-                        term_id=active_term.term_id
-                    ).delete()
-                    db.session.commit()
-                    flash(f"Cleared all availability for {clear_name} in this term.", 'success')
-            except Exception as e:
-                db.session.rollback()
-                flash(f"Error clearing availability for {clear_name}: {e}", 'error')
 
-            return redirect(url_for('availability.availability', term_id=active_term.term_id))
+@availability_bp.route('/page', methods=['GET'])
+@login_required
+def availability_page():
+    return send_from_directory(availability_bp.static_folder, 'availability_index.html')
 
-        # -------------------
-        # CSV UPLOAD
-        # -------------------
-        if action == 'upload':
-            file = request.files.get('csv_file')
-            if not file or not file.filename.endswith('.csv'):
-                flash('Please upload a valid CSV file.', 'error')
-                return redirect(url_for('availability.availability', term_id=active_term.term_id))
 
-            try:
-                stream = io.StringIO(file.stream.read().decode('UTF8'))
-                reader = csv.DictReader(stream)
+# --------- REST API: get terms ---------
+@availability_bp.route('/api/v1/terms', methods=['GET'])
+@login_required
+def get_terms():
+    terms = Term.query.order_by(Term.start_date.desc()).all()
+    data = [
+        {
+            "term_id": t.term_id,
+            "name": t.name,
+            "start_date": t.start_date.isoformat(),
+            "end_date": t.end_date.isoformat()
+        }
+        for t in terms
+    ]
+    return jsonify(data), 200
 
-                # Aggregate parsed CSV blocks by (user_id, day_key)
-                # Example: aggregated[(1, 'Mon')] = [(09:00, 12:00), (13:00, 17:00)]
-                aggregated = {}
-                any_error = False
 
-                for row in reader:
-                    name = (row.get('name') or '').strip()
-                    day_raw = (row.get('day_of_week') or '').strip()
-                    start_raw = (row.get('start_time') or '').strip()
-                    end_raw = (row.get('end_time') or '').strip()
+# --------- REST API: get availability for a term ---------
+@availability_bp.route('/api/v1/availability', methods=['GET'])
+@login_required
+def get_availability():
+    term_id = request.args.get('term_id', type=int)
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
 
-                    if not name or not day_raw or not start_raw or not end_raw:
-                        any_error = True
-                        flash("CSV row missing required fields (name, day_of_week, start_time, end_time).", 'error')
-                        continue
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
 
-                    user = User.query.filter_by(name=name).first()
-                    if not user:
-                        any_error = True
-                        flash(f"User '{name}' from CSV not found in the system. Row skipped.", 'error')
-                        continue
-
-                    # Normalize day to 3-letter format
-                    day_key = day_raw.capitalize()[:3]  # e.g. Monday -> Mon, mon -> Mon
-
-                    try:
-                        start_time = datetime.strptime(start_raw, '%H:%M').time()
-                        end_time = datetime.strptime(end_raw, '%H:%M').time()
-                    except ValueError:
-                        any_error = True
-                        flash(
-                            f"Invalid time format in CSV row for {name} on {day_raw}: "
-                            f"'{start_raw}-{end_raw}'. Use 24-hour HH:MM.",
-                            'error'
-                        )
-                        continue
-
-                    aggregated.setdefault((user.user_id, day_key), []).append((start_time, end_time))
-
-                # Now apply changes: for each (user_id, day_key) in CSV, overwrite that day
-                for (user_id, day_key), blocks in aggregated.items():
-                    # Delete existing availability for this user/day/term
-                    Availability.query.filter_by(
-                        user_id=user_id,
-                        term_id=active_term.term_id,
-                        day_of_week=day_key
-                    ).delete()
-
-                    # Insert all blocks from CSV for that day
-                    for start_time, end_time in blocks:
-                        new_avail = Availability(
-                            user_id=user_id,
-                            term_id=active_term.term_id,
-                            day_of_week=day_key,
-                            start_time=start_time,
-                            end_time=end_time
-                        )
-                        db.session.add(new_avail)
-
-                db.session.commit()
-
-                if any_error:
-                    flash('CSV processed with some errors. Check messages above for details.', 'error')
-                else:
-                    flash('CSV data uploaded successfully!', 'success')
-
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Error uploading CSV: {e}', 'error')
-
-            return redirect(url_for('availability.availability', term_id=active_term.term_id))
-
-        # -------------------
-        # MANUAL UPDATES (24-hour format)
-        # -------------------
-        elif action == 'update':
-            try:
-                student_names = request.form.getlist('student_name[]')
-                days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-
-                # Get all day columns once
-                day_blocks = {day: request.form.getlist(f'{day}[]') for day in days}
-
-                # 1) Aggregate non-empty raw blocks by (student_name, day_key)
-                #    Example: aggregated[('Alice', 'Mon')] = ['09:00-12:00', '13:00-17:00']
-                aggregated = {}
-
-                for row_index, raw_name in enumerate(student_names):
-                    name = (raw_name or "").strip()
-                    if not name:
-                        continue
-
-                    for day in days:
-                        blocks_list = day_blocks.get(day, [])
-                        cell_value = (
-                            blocks_list[row_index].strip()
-                            if row_index < len(blocks_list) and blocks_list[row_index] is not None
-                            else ''
-                        )
-
-                        if not cell_value:
-                            continue  # this row doesn't change this (user, day)
-
-                        day_key = day.capitalize()[:3]  # 'mon' -> 'Mon', etc.
-
-                        # Allow multiple blocks separated by commas, e.g. "09:00-12:00, 13:00-17:00"
-                        for segment in cell_value.split(','):
-                            seg = segment.strip()
-                            if not seg:
-                                continue
-                            aggregated.setdefault((name, day_key), []).append(seg)
-
-                any_error = False
-
-                # 2) For each (user, day), parse all blocks; then replace DB rows for that (user, day)
-                for (student_name, day_key), blocks in aggregated.items():
-                    user = User.query.filter_by(name=student_name).first()
-                    if not user:
-                        continue
-
-                    parsed_blocks = []
-
-                    for raw_block in blocks:
-                        # Normalize block: replace unicode dashes with normal hyphen
-                        block = raw_block.replace('–', '-').strip()
-
-                        # Must contain exactly one '-' separating start and end
-                        if '-' not in block:
-                            any_error = True
-                            flash(
-                                f"Invalid block '{raw_block}' for {student_name} on {day_key}. "
-                                "Use HH:MM-HH:MM, e.g. 09:00-12:00.",
-                                'error'
-                            )
-                            continue
-
-                        try:
-                            start_str, end_str = [t.strip() for t in block.split('-', 1)]
-
-                            # STRICT 24-hour format only
-                            start_time = datetime.strptime(start_str, '%H:%M').time()
-                            end_time = datetime.strptime(end_str, '%H:%M').time()
-
-                            parsed_blocks.append((start_time, end_time))
-
-                        except ValueError:
-                            any_error = True
-                            flash(
-                                f"Invalid time format in block '{raw_block}' for {student_name} on {day_key}. "
-                                "Use 24-hour format like 09:00-17:00 (multiple: 09:00-12:00, 13:00-17:00).",
-                                'error'
-                            )
-
-                    # If at least one block parsed correctly, replace that user/day in the DB
-                    if parsed_blocks:
-                        Availability.query.filter_by(
-                            user_id=user.user_id,
-                            term_id=active_term.term_id,
-                            day_of_week=day_key
-                        ).delete()
-
-                        for start_time, end_time in parsed_blocks:
-                            new_avail = Availability(
-                                user_id=user.user_id,
-                                term_id=active_term.term_id,
-                                day_of_week=day_key,
-                                start_time=start_time,
-                                end_time=end_time
-                            )
-                            db.session.add(new_avail)
-
-                db.session.commit()
-
-                if any_error:
-                    flash('Availability updated (some blocks had errors). Check messages above.', 'error')
-                else:
-                    flash('Availability updated successfully!', 'success')
-
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Error updating availability: {e}', 'error')
-
-        # Redirect to preserve PRG pattern
-        return redirect(url_for('availability.availability', term_id=active_term.term_id))
-
-    # -------------------
-    # GET REQUEST — SHOW CURRENT AVAILABILITY
-    # -------------------
     if current_user.role.lower() == 'supervisor':
         all_availability = Availability.query.join(User).filter(
-            Availability.term_id == active_term.term_id
+            Availability.term_id == term_id
         ).all()
     else:
         all_availability = Availability.query.filter_by(
             user_id=current_user.user_id,
-            term_id=active_term.term_id
+            term_id=term_id
         ).all()
 
-    # Organize data by user → day (3-letter format)
-    availability_data = {}
+    # Build structure
+    result = {}
     for a in all_availability:
-        user = a.user
-        if user.name not in availability_data:
-            availability_data[user.name] = {d: "" for d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']}
+        name = a.user.name
+        if name not in result:
+            result[name] = {d: [] for d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']}
 
         day_key = a.day_of_week[:3].capitalize()
         start_str = a.start_time.strftime("%H:%M")
         end_str = a.end_time.strftime("%H:%M")
-        new_block = f"{start_str}-{end_str}"
+        block = f"{start_str}-{end_str}"
+        result[name][day_key].append(block)
 
-        if not a.start_time or not a.end_time:
+    return jsonify({
+        "term_id": term_id,
+        "availability": result
+    }), 200
+
+
+# --------- REST API: update availability (JSON) ---------
+@availability_bp.route('/api/v1/availability', methods=['POST'])
+@login_required
+def update_availability():
+    data = request.get_json(silent=True) or {}
+    term_id = data.get("term_id")
+    rows = data.get("rows", [])
+
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
+
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
+
+    days_keys = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    any_error = False
+    errors = []
+
+    
+    aggregated = {}
+
+    for row in rows:
+        name = (row.get("student_name") or "").strip()
+        if not name:
             continue
 
-        existing = availability_data[user.name].get(day_key, "")
-        if existing:
-            # Append another block for that day, comma-separated
-            availability_data[user.name][day_key] = existing + ", " + new_block
-        else:
-            availability_data[user.name][day_key] = new_block
-    
+        user = User.query.filter_by(name=name).first()
+        if not user:
+            any_error = True
+            errors.append(f"User '{name}' not found")
+            continue
 
-    return render_template(
-        'availability_index.html',
-        availability_data=availability_data,
-        active_term=active_term,
-        available_terms=available_terms
+        for day_key in days_keys:
+            cell_value = (row.get(day_key) or "").strip()
+            if not cell_value:
+                continue
+
+            # multiple blocks: "09:00-12:00, 13:00-17:00"
+            for segment in cell_value.split(','):
+                seg = segment.replace('–', '-').strip()
+                if not seg:
+                    continue
+                aggregated.setdefault((user.user_id, day_key), []).append(seg)
+
+    #Write to DB
+    for (user_id, day_key), blocks in aggregated.items():
+        parsed_blocks = []
+
+        for raw_block in blocks:
+            block = raw_block.replace('–', '-').strip()
+            if '-' not in block:
+                any_error = True
+                errors.append(
+                    f"Invalid block '{raw_block}' for user_id {user_id} on {day_key}."
+                )
+                continue
+
+            try:
+                start_str, end_str = [t.strip() for t in block.split('-', 1)]
+                start_time = datetime.strptime(start_str, '%H:%M').time()
+                end_time = datetime.strptime(end_str, '%H:%M').time()
+                parsed_blocks.append((start_time, end_time))
+            except ValueError:
+                any_error = True
+                errors.append(
+                    f"Invalid time format in block '{raw_block}' for user_id {user_id} on {day_key}. "
+                    "Use HH:MM-HH:MM (e.g. 09:00-17:00)."
+                )
+
+        if parsed_blocks:
+            # Overwrite that user/day/term
+            Availability.query.filter_by(
+                user_id=user_id,
+                term_id=term_id,
+                day_of_week=day_key
+            ).delete()
+
+            for start_time, end_time in parsed_blocks:
+                db.session.add(Availability(
+                    user_id=user_id,
+                    term_id=term_id,
+                    day_of_week=day_key,
+                    start_time=start_time,
+                    end_time=end_time
+                ))
+
+    db.session.commit()
+
+    status = 207 if any_error else 200
+    return jsonify({
+        "message": "Availability updated",
+        "errors": errors
+    }), status
+
+
+# --------- REST API: CSV upload (overwrite per user/day) ---------
+@availability_bp.route('/api/v1/availability/upload', methods=['POST'])
+@login_required
+def upload_availability_csv():
+    term_id = request.form.get('term_id', type=int)
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
+
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
+
+    file = request.files.get('csv_file')
+    if not file or not file.filename.endswith('.csv'):
+        return jsonify({"error": "Please upload a valid CSV file"}), 400
+
+    try:
+        stream = io.StringIO(file.stream.read().decode('UTF8'))
+        reader = csv.DictReader(stream)
+
+        aggregated = {}
+        errors = []
+        any_error = False
+        total_rows = 0
+        success_rows = 0
+        error_rows = 0
+
+        for row in reader:
+            name = (row.get('name') or '').strip()
+            day_raw = (row.get('day_of_week') or '').strip()
+            start_raw = (row.get('start_time') or '').strip()
+            end_raw = (row.get('end_time') or '').strip()
+
+            # Skip completely empty rows (e.g. trailing blank line)
+            if not (name or day_raw or start_raw or end_raw):
+                continue
+
+            total_rows += 1
+
+            if not name or not day_raw or not start_raw or not end_raw:
+                any_error = True
+                error_rows += 1
+                errors.append(f"Row {total_rows}: missing required fields.")
+                continue
+
+            user = User.query.filter_by(name=name).first()
+            if not user:
+                any_error = True
+                error_rows += 1
+                errors.append(
+                    f"Row {total_rows}: user '{name}' not found. "
+                    "Check spelling or create this user first."
+                )
+                continue
+
+            day_key = day_raw.capitalize()[:3]
+
+            try:
+                start_time = datetime.strptime(start_raw, '%H:%M').time()
+                end_time = datetime.strptime(end_raw, '%H:%M').time()
+            except ValueError:
+                any_error = True
+                error_rows += 1
+                errors.append(
+                    f"Row {total_rows}: invalid time for {name} on {day_raw}: "
+                    f"'{start_raw}-{end_raw}'. Expected HH:MM (e.g. 09:00)."
+                )
+                continue
+
+            # If we got here, this row is valid
+            success_rows += 1
+            aggregated.setdefault((user.user_id, day_key), []).append((start_time, end_time))
+
+        # Overwrite per (user, day)
+        for (user_id, day_key), blocks in aggregated.items():
+            Availability.query.filter_by(
+                user_id=user_id,
+                term_id=term_id,
+                day_of_week=day_key
+            ).delete()
+
+            for start_time, end_time in blocks:
+                db.session.add(Availability(
+                    user_id=user_id,
+                    term_id=term_id,
+                    day_of_week=day_key,
+                    start_time=start_time,
+                    end_time=end_time
+                ))
+
+        db.session.commit()
+
+        # Decide status + top-level message
+        if success_rows == 0:
+            # Nothing imported – treat as real failure
+            status = 400
+            message = "CSV processed but no rows were imported. Please fix the errors and try again."
+        elif any_error:
+            # Partial success
+            status = 207  # Multi-Status
+            message = (
+                f"CSV processed with some issues: {success_rows}/{total_rows} "
+                "rows were imported."
+            )
+        else:
+            # All good
+            status = 200
+            message = f"CSV processed successfully: {success_rows}/{total_rows} rows imported."
+
+        return jsonify({
+            "message": message,
+            "errors": errors,
+            "summary": {
+                "total_rows": total_rows,
+                "processed_rows": success_rows,
+                "error_rows": error_rows,
+                "partial_success": any_error and success_rows > 0
+            }
+        }), status
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Error uploading CSV: {e}"}), 500
+
+# --------- Export Availability into CSV ---------
+@availability_bp.route('/api/v1/availability/export', methods=['GET'])
+@login_required
+def export_availability_csv():
+    term_id = request.args.get('term_id', type=int)
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
+
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
+
+    
+    if current_user.role.lower() == 'supervisor':
+        all_availability = Availability.query.join(User).filter(
+            Availability.term_id == term_id
+        ).all()
+    else:
+        all_availability = Availability.query.filter_by(
+            user_id=current_user.user_id,
+            term_id=term_id
+        ).all()
+
+    # Map 3-letter day keys back to full names for CSV
+    day_full_map = {
+        'Mon': 'Monday',
+        'Tue': 'Tuesday',
+        'Wed': 'Wednesday',
+        'Thu': 'Thursday',
+        'Fri': 'Friday',
+        'Sat': 'Saturday',
+        'Sun': 'Sunday',
+    }
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow(['name', 'day_of_week', 'start_time', 'end_time'])
+
+    for a in all_availability:
+        name = a.user.name
+        day_key = a.day_of_week[:3].capitalize()
+        day_full = day_full_map.get(day_key, a.day_of_week)
+        start_str = a.start_time.strftime("%H:%M")
+        end_str = a.end_time.strftime("%H:%M")
+        writer.writerow([name, day_full, start_str, end_str])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    filename = f"availability_term_{term_id}.csv"
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
     )
+
+
+# --------- REST API: clear one student's availability for this term ---------
+@availability_bp.route('/api/v1/availability/clear-row', methods=['POST'])
+@login_required
+def clear_row():
+    data = request.get_json(silent=True) or {}
+    term_id = data.get("term_id")
+    student_name = (data.get("student_name") or "").strip()
+
+    if not term_id or not student_name:
+        return jsonify({"error": "term_id and student_name are required"}), 400
+
+    user = User.query.filter_by(name=student_name).first()
+    if not user:
+        return jsonify({"error": f"User '{student_name}' not found"}), 404
+
+    Availability.query.filter_by(
+        user_id=user.user_id,
+        term_id=term_id
+    ).delete()
+    db.session.commit()
+
+    return jsonify({"message": f"Cleared availability for {student_name} in term {term_id}"}), 200
+
+@availability_bp.route('/api/v1/availability/clear-all', methods=['POST'])
+@login_required
+def clear_all_availability():
+    data = request.get_json(silent=True) or {}
+    term_id = data.get("term_id")
+
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
+
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
+
+    # Delete all availability rows for this term
+    deleted_count = Availability.query.filter_by(term_id=term_id).delete(synchronize_session=False)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Cleared {deleted_count} availability entries for term '{term.name}'.",
+        "deleted": deleted_count,
+        "term_id": term_id
+    }), 200

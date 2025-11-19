@@ -132,7 +132,7 @@
 
 <div class="dashboard-options">
     {% if current_user.role != 'student' %}
-    <a href="{{ url_for('availability.availability') }}" class="dashboard-btn secondary">
+    <a href="{{ url_for('availability.availability_page') }}" class="dashboard-btn secondary">
         <div class="btn-content">
             <h3>Availability</h3>
             <p>Manage employee availability</p>
