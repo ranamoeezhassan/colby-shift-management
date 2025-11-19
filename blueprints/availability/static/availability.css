@@ -672,6 +672,16 @@ input[type="file"] {
         color: white;
     }
 
+    .btn-secondary.danger {
+    border-color: #d9534f;
+    color: #d9534f;
+    }
+
+    .btn-secondary.danger:hover {
+        background: #d9534f;
+        color: #ffffff;
+    }
+
     .csv-guide {
         background: #f8f9fa;
         border: 1px solid #e9ecef;
@@ -691,6 +701,33 @@ input[type="file"] {
         border-radius: 4px;
         font-size: 0.85rem;
         overflow-x: auto;
+    }
+
+    .csv-error-panel {
+    margin-top: 1rem;
+    background-color: #fff5f5;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.9rem;
+    }
+
+    .csv-error-panel h4 {
+        margin-top: 0;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+    }
+
+    .csv-error-panel ul {
+        padding-left: 1.25rem;
+        margin: 0;
+    }
+
+    .csv-error-panel li {
+        margin-bottom: 0.25rem;
     }
 
     .guide-toggle {
@@ -784,30 +821,30 @@ input[type="file"] {
     }
 
     /* Base alert style */
-    .alert {
-        min-width: 260px;
-        max-width: 480px;
-        padding: 0.75rem 1rem;
-        margin-bottom: 0.5rem;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        font-family: inherit;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        pointer-events: auto;
+        .alert {
+    padding: 12px 18px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-family: inherit;
     }
 
-    /* Success alert (green) */
+    /* Success = green */
     .alert.success {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        color: #155724;
+    background-color: #d4edda;
+    color: #155724;
     }
 
-    /* Error alert (red) */
+    /* Error = red */
     .alert.error {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        color: #721c24;
+    background-color: #f8d7da;
+    color: #721c24;
+    }
+
+    /* Partial success = yellow */
+    .alert.warning {
+    background-color: #fff3cd;
+    color: #856404;
     }
 
     /* Info / default alert (grey) */
