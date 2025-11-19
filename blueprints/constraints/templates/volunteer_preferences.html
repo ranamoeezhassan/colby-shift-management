@@ -100,17 +100,17 @@
     margin-right: 1rem;
 }
 
-.preference-badge.early {
+.preference-badge.early_morning {
     background: #e3f2fd;
     color: #1565c0;
 }
 
-.preference-badge.late {
+.preference-badge.late_evening {
     background: #f3e5f5;
     color: #7b1fa2;
 }
 
-.preference-badge.both {
+.preference-badge.weekend {
     background: #e8f5e8;
     color: #2e7d32;
 }
@@ -156,6 +156,12 @@
     color: #666;
     font-size: 0.9rem;
 }
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+}
 </style>
 {% endblock %}
 
@@ -163,25 +169,10 @@
 {% block header_subtitle %}Mark students as volunteers for early morning or late evening shifts{% endblock %}
 
 {% block content %}
-<div class="stats-section">
+<div class="stats-section" id="statsSection">
     <h3>Current Volunteer Statistics</h3>
-    <div class="stats-grid">
-        <div class="stat-item">
-            <div class="stat-number">{{ preferences|selectattr('0.preference_type', 'equalto', 'early')|list|length }}</div>
-            <div class="stat-label">Early Volunteers</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-number">{{ preferences|selectattr('0.preference_type', 'equalto', 'late')|list|length }}</div>
-            <div class="stat-label">Late Volunteers</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-number">{{ preferences|selectattr('0.preference_type', 'equalto', 'both')|list|length }}</div>
-            <div class="stat-label">Both Volunteers</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-number">{{ preferences|length }}</div>
-            <div class="stat-label">Total Volunteers</div>
-        </div>
+    <div class="stats-grid" id="statsGrid">
+        <div class="loading">Loading statistics...</div>
     </div>
 </div>
 
@@ -200,27 +191,28 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="term_id">Term</label>
-                    <select id="term_id" name="term_id" required>
-                        <option value="">Select a term</option>
-                        {% for term in terms %}
-                        <option value="{{ term.term_id }}">{{ term.term_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="form-group">
                     <label for="preference_type">Preference Type</label>
-                    <select id="preference_type" name="preference_type" required>
+                                        <select id="preference_type" name="preference_type" required>
                         <option value="">Select type</option>
-                        <option value="early">Early Shifts Only</option>
-                        <option value="late">Late Shifts Only</option>
-                        <option value="both">Both Early and Late</option>
+                        <option value="early_morning">Early Morning Shifts</option>
+                        <option value="late_evening">Late Evening Shifts</option>
+                        <option value="weekend">Weekend Shifts</option>
                     </select>
                     <div class="help-text">What type of undesirable shifts can this student work?</div>
                 </div>
+                <div class="form-group">
+                    <label for="preference_value">Preference Value</label>
+                    <input type="text" id="preference_value" name="preference_value" placeholder="e.g., 6AM-8AM, 10PM-12AM" required>
+                    <div class="help-text">Specific time ranges or values</div>
+                </div>
             </div>
             <div class="form-row">
-                <div class="form-group" style="grid-column: 1 / -1;">
+                <div class="form-group">
+                    <label for="priority">Priority (1-10)</label>
+                    <input type="number" id="priority" name="priority" min="1" max="10" value="1">
+                    <div class="help-text">Higher numbers = higher priority</div>
+                </div>
+                <div class="form-group" style="grid-column: 2 / -1;">
                     <label for="notes">Notes (Optional)</label>
                     <textarea id="notes" name="notes" placeholder="Additional notes about this volunteer preference..."></textarea>
                     <div class="help-text">Any special considerations or limitations</div>
@@ -234,40 +226,110 @@
 
 <div class="preferences-list">
     <h2>Current Volunteer Preferences</h2>
-    {% if preferences %}
-        {% for preference, user, term in preferences %}
-        <div class="preference-item" data-preference-id="{{ preference.preference_id }}">
-            <div class="preference-info">
-                <h4>{{ user.name }}</h4>
-                <div class="preference-details">
-                    <strong>Term:</strong> {{ term.term_name }} | 
-                    <strong>Email:</strong> {{ user.email }} | 
-                    <strong>Added:</strong> {{ preference.created_date.strftime('%Y-%m-%d') }}
-                    {% if preference.notes %}
-                    <br><strong>Notes:</strong> {{ preference.notes }}
-                    {% endif %}
-                </div>
-            </div>
-            <div class="preference-actions">
-                <span class="preference-badge {{ preference.preference_type }}">
-                    {{ preference.preference_type.title() }}
-                </span>
-                <div class="btn-group">
-                    <button class="btn btn-danger btn-sm remove-preference" data-preference-id="{{ preference.preference_id }}">Remove</button>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    {% else %}
-        <p>No volunteer preferences set yet. Add some above to help with fair scheduling of early and late shifts.</p>
-    {% endif %}
+    <div id="preferencesList">
+        <div class="loading">Loading preferences...</div>
+    </div>
 </div>
-{% endblock %}
 
-{% block footer %}<a href="{{ url_for('constraints.index') }}">← Back to Constraints</a>{% endblock %}
-
-{% block scripts %}
 <script>
+// Load preferences and stats on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadPreferences();
+});
+
+async function loadPreferences() {
+    try {
+        const response = await fetch('{{ url_for("constraints.get_volunteer_preferences_api") }}');
+        const result = await response.json();
+        
+        if (result.success) {
+            displayPreferences(result.preferences);
+            updateStats(result.preferences);
+        } else {
+            document.getElementById('preferencesList').innerHTML = '<div class="error">Error loading preferences: ' + result.error + '</div>';
+        }
+    } catch (error) {
+        document.getElementById('preferencesList').innerHTML = '<div class="error">Error loading preferences: ' + error.message + '</div>';
+    }
+}
+
+function displayPreferences(preferences) {
+    const preferencesList = document.getElementById('preferencesList');
+    
+    if (!preferences || preferences.length === 0) {
+        preferencesList.innerHTML = '<p>No volunteer preferences set yet. Add some above to help with fair scheduling of early and late shifts.</p>';
+        return;
+    }
+    
+    let html = '';
+    preferences.forEach(preference => {
+        const createdDate = preference.created_at ? new Date(preference.created_at).toLocaleDateString() : 'Unknown';
+        const displayType = preference.preference_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        html += `
+            <div class="preference-item" data-preference-id="${preference.preference_id}">
+                <div class="preference-info">
+                    <h4>${preference.user_name || preference.username || 'Unknown User'}</h4>
+                    <div class="preference-details">
+                        <strong>Type:</strong> ${displayType} | 
+                        <strong>Notes:</strong> ${preference.notes || 'None'} | 
+                        <strong>Added:</strong> ${createdDate}
+                    </div>
+                </div>
+                <div class="preference-actions">
+                    <span class="preference-badge ${preference.preference_type}">
+                        ${displayType}
+                    </span>
+                    <div class="btn-group">
+                        <button class="btn btn-danger btn-sm remove-preference" data-preference-id="${preference.preference_id}">Remove</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    preferencesList.innerHTML = html;
+    
+    // Add event listeners for delete buttons
+    document.querySelectorAll('.remove-preference').forEach(button => {
+        button.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to remove this volunteer preference?')) {
+                return;
+            }
+            
+            const preferenceId = this.dataset.preferenceId;
+            await deletePreference(preferenceId);
+        });
+    });
+}
+
+function updateStats(preferences) {
+    const earlyCount = preferences.filter(p => p.preference_type === 'early_morning').length;
+    const lateCount = preferences.filter(p => p.preference_type === 'late_evening').length;
+    const weekendCount = preferences.filter(p => p.preference_type === 'weekend').length;
+    const totalCount = preferences.length;
+    
+    const statsGrid = document.getElementById('statsGrid');
+    statsGrid.innerHTML = `
+        <div class="stat-item">
+            <div class="stat-number">${earlyCount}</div>
+            <div class="stat-label">Early Morning Volunteers</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">${lateCount}</div>
+            <div class="stat-label">Late Evening Volunteers</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">${weekendCount}</div>
+            <div class="stat-label">Weekend Volunteers</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">${totalCount}</div>
+            <div class="stat-label">Total Volunteers</div>
+        </div>
+    `;
+}
+
+// Form submission
 document.getElementById('volunteerForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -276,10 +338,9 @@ document.getElementById('volunteerForm').addEventListener('submit', async functi
     
     // Convert string values to appropriate types
     data.user_id = parseInt(data.user_id);
-    data.term_id = parseInt(data.term_id);
     
     try {
-        const response = await fetch('{{ url_for("constraints.create_volunteer_preference") }}', {
+        const response = await fetch('{{ url_for("constraints.create_volunteer_preference_api") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -291,7 +352,8 @@ document.getElementById('volunteerForm').addEventListener('submit', async functi
         
         if (result.success) {
             alert('Volunteer preference added successfully!');
-            location.reload();
+            this.reset(); // Clear the form
+            loadPreferences(); // Reload the preferences list
         } else {
             alert('Error adding volunteer preference: ' + result.error);
         }
@@ -300,32 +362,25 @@ document.getElementById('volunteerForm').addEventListener('submit', async functi
     }
 });
 
-// Remove preference functionality
-document.querySelectorAll('.remove-preference').forEach(button => {
-    button.addEventListener('click', async function() {
-        if (!confirm('Are you sure you want to remove this volunteer preference?')) {
-            return;
-        }
+async function deletePreference(preferenceId) {
+    try {
+        const response = await fetch(`{{ url_for('constraints.delete_volunteer_preference_api', preference_id=0) }}`.replace('0', preferenceId), {
+            method: 'DELETE'
+        });
         
-        const preferenceId = this.dataset.preferenceId;
+        const result = await response.json();
         
-        try {
-            const response = await fetch(`{{ url_for('constraints.remove_volunteer_preference', preference_id=0) }}`.replace('0', preferenceId), {
-                method: 'DELETE'
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                alert('Volunteer preference removed successfully!');
-                location.reload();
-            } else {
-                alert('Error removing volunteer preference: ' + result.error);
-            }
-        } catch (error) {
-            alert('Error removing volunteer preference: ' + error.message);
+        if (result.success) {
+            alert('Volunteer preference removed successfully!');
+            loadPreferences(); // Reload the preferences list
+        } else {
+            alert('Error removing volunteer preference: ' + result.error);
         }
-    });
-});
+    } catch (error) {
+        alert('Error removing volunteer preference: ' + error.message);
+    }
+}
 </script>
 {% endblock %}
+
+{% block footer %}<a href="{{ url_for('constraints.index') }}">← Back to Constraints</a>{% endblock %}

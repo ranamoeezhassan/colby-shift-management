@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_login import LoginManager
 from flask import request
+from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 
@@ -20,20 +21,26 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Configuration
+# Configuration for Heroku
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Enable CORS for API endpoints
+CORS(app)
 
 # Database configuration - handle both local and Heroku environments
 if os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL'):
     # Production (Heroku with JawsDB MySQL)
     database_url = os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL')
     
+    # Handle postgres:// URLs from Heroku
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
     # JawsDB provides mysql:// URLs, but we need to use PyMySQL driver
-    if database_url.startswith('mysql://'):
+    elif database_url.startswith('mysql://'):
         database_url = database_url.replace('mysql://', 'mysql+pymysql://', 1)
     
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    print(f"Using MySQL database: {database_url.split('@')[1] if '@' in database_url else 'JawsDB'}")
+    print(f"Using production database: {database_url.split('@')[1] if '@' in database_url else 'production'}")
 else:
     # Development - use SQLite
     basedir = os.path.abspath(os.path.dirname(__file__))
@@ -42,7 +49,6 @@ else:
     db_path = os.path.join(instance_dir, 'shift_management.db')
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
     print(f"Using SQLite database: {db_path}")
-
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize extensions
@@ -78,8 +84,13 @@ app.register_blueprint(constraints_bp)
 app.register_blueprint(scheduler_bp)
 app.register_blueprint(outputs_bp)
 
+# Simple health check for monitoring
+@app.route('/health')
+def health_check():
+    return {'status': 'healthy'}, 200
+
 # Only add debug instrumentation in development
-if not os.environ.get('DATABASE_URL'):  # Only in development
+if not os.environ.get('DATABASE_URL') and os.environ.get('FLASK_ENV') != 'production':
     @app.before_request
     def _debug_before_request():
         from flask_login import current_user
@@ -89,8 +100,6 @@ if not os.environ.get('DATABASE_URL'):  # Only in development
     def _debug_after_request(resp):
         print(f"TRACE: AFTER  {request.method} {request.path} -> {resp.status_code} redirect_to={resp.headers.get('Location')}", flush=True)
         return resp
-
-    # SQLAlchemy event hooks for commit visibility (development only)
     from sqlalchemy import event
     from sqlalchemy.orm import Session
 
