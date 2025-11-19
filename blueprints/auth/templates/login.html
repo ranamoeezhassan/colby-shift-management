@@ -48,11 +48,19 @@
     const password = document.getElementById("password").value;
     const remember = document.getElementById("remember")?.checked || false;
 
+    // Get reCAPTCHA response
+    const recaptchaResponse = typeof grecaptcha !== 'undefined' ? grecaptcha.getResponse() : '';
+
     try {
       const response = await fetch("{{ url_for('auth.api_login') }}", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, remember }),
+        body: JSON.stringify({
+          email,
+          password,
+          remember,
+          "g-recaptcha-response": recaptchaResponse
+        }),
       });
 
       const data = await response.json();

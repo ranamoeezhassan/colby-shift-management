@@ -68,6 +68,9 @@
     const password = document.getElementById("password").value;
     const confirm_password = document.getElementById("confirm_password").value;
 
+    // Get reCAPTCHA response
+    const recaptchaResponse = typeof grecaptcha !== 'undefined' ? grecaptcha.getResponse() : '';
+
     try {
       const response = await fetch("{{ url_for('auth.api_signup') }}", {
         method: "POST",
@@ -78,6 +81,7 @@
           role,
           password,
           confirm_password,
+          "g-recaptcha-response": recaptchaResponse,
         }),
       });
 

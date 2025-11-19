@@ -119,9 +119,14 @@ def api_login():
     email = data.get("email", "").strip()
     password = data.get("password", "").strip()
     remember = bool(data.get("remember", False))
+    recaptcha_response = data.get("g-recaptcha-response", "").strip()
 
     if not email or not password:
         return jsonify({"ok": False, "message": "Please fill in all fields."}), 400
+
+    # Verify reCAPTCHA
+    if not verify_recaptcha(recaptcha_response):
+        return jsonify({"ok": False, "message": "Please complete the reCAPTCHA verification."}), 400
 
     user = User.query.filter_by(email=email).first()
 
@@ -253,9 +258,14 @@ def api_signup():
     role = data.get("role", "").strip()
     password = data.get("password", "").strip()
     confirm_password = data.get("confirm_password", "").strip()
+    recaptcha_response = data.get("g-recaptcha-response", "").strip()
 
     if not name or not email or not role or not password or not confirm_password:
         return jsonify({"ok": False, "message": "Please fill in all fields."}), 400
+
+    # Verify reCAPTCHA
+    if not verify_recaptcha(recaptcha_response):
+        return jsonify({"ok": False, "message": "Please complete the reCAPTCHA verification."}), 400
 
     if password != confirm_password:
         return jsonify({"ok": False, "message": "Passwords do not match."}), 400

@@ -17,8 +17,11 @@ def verify_recaptcha(response_token):
     # Get secret key from config
     secret_key = current_app.config.get('RECAPTCHA_SECRET_KEY')
     if not secret_key:
-        # If no secret key configured, skip verification (for development)
+        # If no secret key configured, require reCAPTCHA completion but allow for development
+        print("Warning: No RECAPTCHA_SECRET_KEY configured - skipping verification")
         return True
+    
+    print(f"Debug: Verifying reCAPTCHA with response: {response_token[:20]}..." if response_token else "Debug: No reCAPTCHA response provided")
     
     # Verify with Google's API
     try:
@@ -32,7 +35,9 @@ def verify_recaptcha(response_token):
         )
         
         result = response.json()
-        return result.get('success', False)
+        success = result.get('success', False)
+        print(f"Debug: reCAPTCHA verification result: success={success}, errors={result.get('error-codes', [])}")
+        return success
         
     except Exception as e:
         # Log error in production, but don't fail the request
