@@ -101,6 +101,66 @@ body {
     color: #666;
 }
 
+/* OAuth divider */
+.oauth-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 20px 0;
+    color: #999;
+    font-size: 14px;
+}
+
+.oauth-divider::before,
+.oauth-divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.oauth-divider::before {
+    margin-right: 10px;
+}
+
+.oauth-divider::after {
+    margin-left: 10px;
+}
+
+/* Google button */
+.google-btn {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background-color: #ffffff;
+    color: #444;
+    border: 1px solid #e1e5e9;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.google-btn:hover {
+    background-color: #f7f7f7;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+}
+
+.google-btn:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.google-icon {
+    width: 18px;
+    height: 18px;
+}
+
 /* Footer */
 .login-footer {
     margin-top: 25px;

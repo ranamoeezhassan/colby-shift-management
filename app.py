@@ -2,17 +2,21 @@ from flask import Flask
 from flask_login import LoginManager
 from flask import request
 import os
+from dotenv import load_dotenv
 
 # Import database instance only - models will be imported later after app config
 from models import db
 
-# Import blueprint instances (routes will be imported later)
-from blueprints.auth import auth_bp
+# Import blueprint instances and auth initialization helpers (routes imported later)
+from blueprints.auth import auth_bp, init_google_oauth
 from blueprints.availability import availability_bp  
 from blueprints.staffing import staffing_bp
 from blueprints.constraints import constraints_bp
 from blueprints.scheduler import scheduler_bp
 from blueprints.outputs import outputs_bp
+
+# Load environment variables (for SECRET_KEY, DATABASE_URL, GOOGLE_CLIENT_ID, etc.)
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -47,6 +51,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.shiftManagementLogin'
 login_manager.login_message = 'Please log in to access this page.'
+
+# Configure Google OAuth (optional; only active if env vars are set).
+# The actual configuration lives in the auth blueprint package so that
+# auth-related logic stays together.
+init_google_oauth(app)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -106,7 +115,7 @@ with app.app_context():
         print(f"Error creating database tables: {e}")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 5001))
     if os.environ.get('DATABASE_URL'):
         # Production
         app.run(host='0.0.0.0', port=port)
