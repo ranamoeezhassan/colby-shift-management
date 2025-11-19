@@ -4,193 +4,141 @@
 
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('auth.static', filename='landing.css') }}">
-<style>
-    /* Make landing page more compact */
-    .content-wrapper {
-        max-width: 450px;
-        margin: 0 auto;
-        min-height: auto;
-        padding: 1.5rem;
-    }
-
-    .page-header {
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.75rem;
-    }
-
-    .page-header h1 {
-        font-size: 1.8rem;
-    }
-
-    .page-footer {
-        margin-top: 1.5rem;
-        padding-top: 0.75rem;
-    }
-    
-    .violation-alert-widget {
-        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-        border: 1px solid #ffeaa7;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .violation-alert-widget:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-    }
-    
-    .violation-alert-widget.critical {
-        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-        border-color: #f5c6cb;
-    }
-    
-    .violation-alert-widget.none {
-        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-        border-color: #c3e6cb;
-    }
-    
-    .violation-count {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #333;
-        margin: 0;
-    }
-    
-    .violation-text {
-        color: #666;
-        margin: 0.5rem 0 0 0;
-        font-weight: 500;
-    }
-    
-    .violation-breakdown {
-        display: flex;
-        justify-content: space-around;
-        margin-top: 0.5rem;
-        font-size: 0.85rem;
-    }
-    
-    .breakdown-item {
-        text-align: center;
-    }
-    
-    .breakdown-item strong {
-        display: block;
-        color: #333;
-    }
-</style>
 {% endblock %}
 
 {% block header_title %}Welcome, {{ current_user.name }}!{% endblock %}
 {% block header_subtitle %}Role: {{ current_user.role.title() }}{% endblock %}
 
 {% block content %}
-<!-- Violation Alert Widget - Hidden for students -->
-{% if current_user.role != 'student' %}
-{% if violation_summary and violation_summary.total_violations > 0 %}
-<div class="violation-alert-widget critical" 
-     data-href="{{ url_for('constraints.validation_dashboard') }}" style="cursor: pointer;">
-    <div class="violation-count">{{ violation_summary.total_violations }}</div>
-    <div class="violation-text">
-        {% if violation_summary.total_violations == 1 %}
-            Active Shift Violation
-        {% else %}
-            Active Shift Violations
-        {% endif %}
-    </div>
-    <div class="violation-breakdown">
-        {% if violation_summary.by_severity.critical > 0 %}
-        <div class="breakdown-item">
-            <strong>{{ violation_summary.by_severity.critical }}</strong>
-            Critical
-        </div>
-        {% endif %}
-        {% if violation_summary.by_severity.error > 0 %}
-        <div class="breakdown-item">
-            <strong>{{ violation_summary.by_severity.error }}</strong>
-            Error
-        </div>
-        {% endif %}
-        {% if violation_summary.by_severity.warning > 0 %}
-        <div class="breakdown-item">
-            <strong>{{ violation_summary.by_severity.warning }}</strong>
-            Warning
-        </div>
-        {% endif %}
-    </div>
-</div>
-{% elif violation_summary %}
-<div class="violation-alert-widget none" data-href="{{ url_for('constraints.validation_dashboard') }}" style="cursor: pointer;">
-    <div class="violation-count">✓</div>
-    <div class="violation-text">No Active Violations</div>
-</div>
-{% endif %}
-{% endif %}
+<div class="landing-wrapper">
+    <!-- Hero / Overview -->
+    <section class="dashboard-hero">
+        <div class="hero-text">
+            <h1>Shift Management Hub</h1>
+            <p class="tagline">Centralize availability, scheduling, and equity tracking in one unified workspace.</p>
+            <div class="quick-stats">
+                {% if current_user.role != 'student' %}
+                {% if violation_summary %}
+                <div class="stat-card {% if violation_summary.total_violations > 0 %}stat-alert{% else %}stat-ok{% endif %}"
+                    data-href="{{ url_for('constraints.validation_dashboard') }}">
+                    <div class="stat-value">{% if violation_summary.total_violations > 0 %}{{
+                        violation_summary.total_violations }}{% else %}✓{% endif %}</div>
+                    <div class="stat-label">{% if violation_summary.total_violations == 1 %}Violation{% elif
+                        violation_summary.total_violations > 1 %}Violations{% else %}No Violations{% endif %}</div>
+                </div>
+                {% endif %}
+                {% endif %}
 
-<div class="dashboard-options">
-    {% if current_user.role != 'student' %}
-    <a href="{{ url_for('availability.availability_page') }}" class="dashboard-btn secondary">
-        <div class="btn-content">
+                <!-- Consolidated Shift Hub Card -->
+                <div class="stat-card hub-card">
+                    <div class="hub-title">Shift Hub</div>
+                    <div class="hub-stats">
+                        <div class="hub-stat" data-href="{{ url_for('availability.availability_page') }}">
+                            <span class="hub-label">Students</span>
+                            <span class="hub-value">{{ dashboard_stats.students }}</span>
+                        </div>
+                        <div class="hub-stat" data-href="{{ url_for('scheduler.index') }}">
+                            <span class="hub-label">Shifts This Week</span>
+                            <span class="hub-value">{{ dashboard_stats.shifts_this_week }}</span>
+                        </div>
+                        <div class="hub-stat" data-href="{{ url_for('availability.availability_page') }}">
+                            <span class="hub-label">Active Terms</span>
+                            <span class="hub-value">{{ dashboard_stats.active_terms }}</span>
+                        </div>
+                        <div class="hub-stat" data-href="{{ url_for('outputs.index') }}">
+                            <span class="hub-label">Total Shifts</span>
+                            <span class="hub-value">{{ dashboard_stats.total_shifts }}</span>
+                        </div>
+                    </div>
+                    <div class="hub-range">Week: {{ dashboard_stats.week_start }} → {{ dashboard_stats.week_end }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="hero-side">
+            <div class="profile-panel">
+                <h3>Your Profile</h3>
+                <p><strong>Email:</strong> {{ current_user.email }}</p>
+                <p><strong>Role:</strong> {{ current_user.role.title() }}</p>
+                <a class="profile-action" href="{{ url_for('auth.logout') }}"><span>Sign Out</span></a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation Grid -->
+    <section class="nav-grid">
+        {% if current_user.role != 'student' %}
+        <a href="{{ url_for('constraints.student_management') }}" class="nav-card">
+            <div class="icon">🧑‍🎓</div>
+            <h3>Students</h3>
+            <p>Add, edit, and manage student volunteers</p>
+        </a>
+
+        <a href="{{ url_for('availability.availability_page') }}" class="nav-card">
+            <div class="icon">📊</div>
             <h3>Availability</h3>
-            <p>Manage employee availability</p>
-        </div>
-    </a>
-
-    <a href="{{ url_for('staffing.index') }}" class="dashboard-btn secondary">
-        <div class="btn-content">
+            <p>Manage when students can work</p>
+        </a>
+        <a href="{{ url_for('staffing.index') }}" class="nav-card">
+            <div class="icon">📈</div>
             <h3>Staffing</h3>
-            <p>View staffing requirements</p>
-        </div>
-    </a>
-
-    <a href="{{ url_for('constraints.index') }}" class="dashboard-btn secondary">
-        <div class="btn-content">
+            <p>Define coverage needs</p>
+        </a>
+        <a href="{{ url_for('constraints.index') }}" class="nav-card">
+            <div class="icon">⚖️</div>
             <h3>Constraints & Equity</h3>
-            <p>Manage shift rules and undesirable time windows</p>
-        </div>
-    </a>
-
-    <a href="{{ url_for('scheduler.index') }}" class="dashboard-btn secondary">
-        <div class="btn-content">
+            <p>Balance fairness and rules</p>
+        </a>
+        <a href="{{ url_for('scheduler.index') }}" class="nav-card">
+            <div class="icon">🗓</div>
             <h3>Scheduler</h3>
-            <p>Generate and manage schedules</p>
-        </div>
-    </a>
-    {% endif %}
-
-    <a href="{{ url_for('outputs.index') }}" class="dashboard-btn secondary">
-        <div class="btn-content">
+            <p>Generate optimal shifts</p>
+        </a>
+        {% endif %}
+        <a href="{{ url_for('outputs.index') }}" class="nav-card">
+            <div class="icon">📤</div>
             <h3>Outputs</h3>
-            <p>View and export schedules</p>
-        </div>
-    </a>
+            <p>Export schedules & reports</p>
+        </a>
+    </section>
 
-    <div class="dashboard-btn secondary" >
-        <div class="btn-content">
-            <h3>Your Profile</h3>
-            <p>Email: {{ current_user.email }}</p>
-            <p>Role: {{ current_user.role.title() }}</p>
+    <!-- Violation Breakdown (expanded) -->
+    {% if current_user.role != 'student' and violation_summary and violation_summary.total_violations > 0 %}
+    <section class="violation-breakdown-panel" data-href="{{ url_for('constraints.validation_dashboard') }}">
+        <h3>Active Violation Breakdown</h3>
+        <div class="breakdown-grid">
+            {% if violation_summary.by_severity.critical > 0 %}
+            <div class="breakdown-box critical">
+                <div class="count">{{ violation_summary.by_severity.critical }}</div>
+                <div class="label">Critical</div>
+            </div>
+            {% endif %}
+            {% if violation_summary.by_severity.error > 0 %}
+            <div class="breakdown-box error">
+                <div class="count">{{ violation_summary.by_severity.error }}</div>
+                <div class="label">Error</div>
+            </div>
+            {% endif %}
+            {% if violation_summary.by_severity.warning > 0 %}
+            <div class="breakdown-box warning">
+                <div class="count">{{ violation_summary.by_severity.warning }}</div>
+                <div class="label">Warning</div>
+            </div>
+            {% endif %}
         </div>
-    </div>
-
-   
+        <p class="panel-hint">Click to view detailed validation dashboard.</p>
+    </section>
+    {% endif %}
 </div>
 
 <script>
-// Handle violation widget clicks
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.violation-alert-widget[data-href]').forEach(widget => {
-        widget.addEventListener('click', function() {
-            const href = this.getAttribute('data-href');
-            if (href) {
-                location.href = href;
-            }
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.stat-card[data-href], .violation-breakdown-panel[data-href]').forEach(el => {
+            el.addEventListener('click', () => {
+                const href = el.getAttribute('data-href');
+                if (href) window.location.href = href;
+            });
         });
     });
-});
 </script>
 {% endblock %}
 
