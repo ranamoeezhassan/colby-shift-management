@@ -4,6 +4,7 @@ from models import db, User
 import os
 import uuid
 from dotenv import load_dotenv
+from utils.recaptcha import verify_recaptcha
 
 from . import auth_bp
 
@@ -25,9 +26,15 @@ def shiftManagementLogin():
         email = request.form.get('email')
         password = request.form.get('password')
         remember = bool(request.form.get('remember'))
+        recaptcha_response = request.form.get('g-recaptcha-response')
         
         if not email or not password:
             flash('Please fill in all fields.', 'error')
+            return render_template('login.html')
+        
+        # Verify reCAPTCHA
+        if not verify_recaptcha(recaptcha_response):
+            flash('Please complete the reCAPTCHA verification.', 'error')
             return render_template('login.html')
         
         user = User.query.filter_by(email=email).first()
@@ -48,10 +55,16 @@ def shiftManagementSignUp():
         role = request.form.get('role')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
+        recaptcha_response = request.form.get('g-recaptcha-response')
         
         # Validation
         if not all([name, email, role, password, confirm_password]):
             flash('Please fill in all fields.', 'error')
+            return render_template('signup.html')
+        
+        # Verify reCAPTCHA
+        if not verify_recaptcha(recaptcha_response):
+            flash('Please complete the reCAPTCHA verification.', 'error')
             return render_template('signup.html')
         
         if password != confirm_password:

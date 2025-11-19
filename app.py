@@ -24,6 +24,10 @@ app = Flask(__name__)
 # Configuration for Heroku
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
+# reCAPTCHA configuration
+app.config['RECAPTCHA_SITE_KEY'] = os.environ.get('RECAPTCHA_SITE_KEY')
+app.config['RECAPTCHA_SECRET_KEY'] = os.environ.get('RECAPTCHA_SECRET_KEY')
+
 # Enable CORS for API endpoints
 CORS(app)
 
