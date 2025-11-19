@@ -10,6 +10,10 @@
 {% block header_subtitle %}Please sign in to your account{% endblock %}
 
 {% block content %}
+<div id="error-container" style="display: none;" class="flash-messages">
+  <div id="error-message" class="flash-message flash-error"></div>
+</div>
+
 <form id="login-form" class="login-form">
   <div class="form-group">
     <label for="email">Email Address</label>
@@ -39,10 +43,24 @@
 </form>
 
 <script>
+  function showErrorMessage(message) {
+    const errorContainer = document.getElementById("error-container");
+    const errorMessage = document.getElementById("error-message");
+    errorMessage.textContent = message;
+    errorContainer.style.display = "block";
+    errorContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function hideErrorMessage() {
+    const errorContainer = document.getElementById("error-container");
+    errorContainer.style.display = "none";
+  }
+
   const form = document.getElementById("login-form");
 
   form.addEventListener("submit", async function (e) {
     e.preventDefault();
+    hideErrorMessage();
 
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
@@ -66,14 +84,14 @@
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
-        alert(data.message || "Login failed.");
+        showErrorMessage(data.message || "Login failed.");
         return;
       }
 
       window.location.href = data.redirect_url || "{{ url_for('auth.shiftManagement') }}";
     } catch (err) {
       console.error(err);
-      alert("Something went wrong. Please try again.");
+      showErrorMessage("Something went wrong. Please try again.");
     }
   });
 </script>
@@ -81,5 +99,5 @@
 {% endblock %}
 
 {% block footer %}Don't have an account?
-<a href="{{ url_for('auth.shiftManagementSignUp') }}">Contact your administrator</a>
+<a href="{{ url_for('auth.shiftManagementSignUp') }}">Sign up here</a>
 {% endblock %}

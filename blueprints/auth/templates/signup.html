@@ -10,6 +10,10 @@
 {% block header_subtitle %}Create your account{% endblock %}
 
 {% block content %}
+<div id="message-container" style="display: none;" class="flash-messages">
+  <div id="message-content" class="flash-message"></div>
+</div>
+
 <form id="signup-form">
   <div class="form-group">
     <label for="name">Full Name</label>
@@ -57,10 +61,34 @@
 </form>
 
 <script>
+  function showErrorMessage(message) {
+    const messageContainer = document.getElementById("message-container");
+    const messageContent = document.getElementById("message-content");
+    messageContent.textContent = message;
+    messageContent.className = "flash-message flash-error";
+    messageContainer.style.display = "block";
+    messageContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function showSuccessMessage(message) {
+    const messageContainer = document.getElementById("message-container");
+    const messageContent = document.getElementById("message-content");
+    messageContent.textContent = message;
+    messageContent.className = "flash-message flash-success";
+    messageContainer.style.display = "block";
+    messageContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function hideMessages() {
+    const messageContainer = document.getElementById("message-container");
+    messageContainer.style.display = "none";
+  }
+
   const signupForm = document.getElementById("signup-form");
 
   signupForm.addEventListener("submit", async function (e) {
     e.preventDefault();
+    hideMessages();
 
     const name = document.getElementById("name").value;
     const email = document.getElementById("email").value;
@@ -88,15 +116,17 @@
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
-        alert(data.message || "Sign up failed.");
+        showErrorMessage(data.message || "Sign up failed.");
         return;
       }
 
-      alert(data.message || "Account created.");
-      window.location.href = data.redirect_url || "{{ url_for('auth.shiftManagementLogin') }}";
+      showSuccessMessage(data.message || "Account created.");
+      setTimeout(() => {
+        window.location.href = data.redirect_url || "{{ url_for('auth.shiftManagementLogin') }}";
+      }, 2000);
     } catch (err) {
       console.error(err);
-      alert("Something went wrong. Please try again.");
+      showErrorMessage("Something went wrong. Please try again.");
     }
   });
 </script>
