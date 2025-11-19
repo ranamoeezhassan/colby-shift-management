@@ -78,9 +78,16 @@ Jane Smith,Tuesday,13:00,17:30</pre>
                 <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
                   <li><strong>day_of_week:</strong> Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday</li>
                   <li><strong>Time format:</strong> 24-hour format (<code>HH:MM</code>), e.g. <code>09:00-17:00</code></li>
-                  <li><strong>Multiple entries:</strong> one row per availability block</li>
+                  <li><strong>Multiple entries:</strong> Each entry is its own line</li>
                 </ul>
               </div>
+
+              <!-- CSV Error Details Panel -->
+              <div id="csvErrorPanel" class="csv-error-panel" style="display: none;">
+                <h4>CSV Issues</h4>
+                <ul id="csvErrorList"></ul>
+              </div>
+
 
               <!-- Availability Table -->
               <table class="availability-table">
@@ -102,6 +109,13 @@ Jane Smith,Tuesday,13:00,17:30</pre>
 
               <div class="form-actions">
                 <button id="saveButton" class="btn-primary">💾 Save Changes</button>
+                <button type="button" id="clearAllButton" class="btn-secondary danger">
+                  🧹 Clear All Availability (This Term)
+                </button>
+                <button type="button" id="exportCsvButton" class="btn-secondary">
+                📥 Export CSV
+                </button>
+
                 <a href="/" class="btn-secondary">🏠 Back to Dashboard</a>
               </div>
             </div>

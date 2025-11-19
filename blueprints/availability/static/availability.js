@@ -234,6 +234,38 @@ async function clearRow(studentName) {
   }
 }
 
+async function clearAllAvailability() {
+  if (!currentTermId) {
+    showAlert('Please select a term first.', 'error');
+    return;
+  }
+
+  if (!confirm('Are you sure you want to clear ALL availability for this term? This cannot be undone.')) {
+    return;
+  }
+
+  const res = await fetch('/availability/api/v1/availability/clear-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term_id: currentTermId })
+  });
+
+  const json = await res.json();
+
+  if (res.ok) {
+    showAlert(json.message || 'All availability cleared for this term.', 'success');
+
+    // Clear any previous CSV error details as they’re no longer relevant
+    if (typeof renderCsvErrors === 'function') {
+      renderCsvErrors([]);
+    }
+
+    await loadAvailability();
+  } else {
+    showAlert(json.error || 'Failed to clear all availability...', 'error');
+  }
+}
+
 // ---------- CSV upload ----------
 async function handleCsvUpload(event) {
   event.preventDefault();
@@ -248,25 +280,32 @@ async function handleCsvUpload(event) {
   const formData = new FormData(form);
   formData.append('term_id', currentTermId);
 
-  try {
-    const res = await fetch('/availability/api/v1/availability/upload', {
-      method: 'POST',
-      body: formData
-    });
+  const res = await fetch('/availability/api/v1/availability/upload', {
+    method: 'POST',
+    body: formData
+  });
 
-    const json = await res.json();
-    if (res.ok) {
-      showAlert(
-        json.message || 'CSV processed!',
-        json.errors && json.errors.length ? 'error' : 'success'
-      );
-      await loadAvailability();
-    } else {
-      showAlert(json.error || 'CSV upload failed...', 'error');
+  const json = await res.json();
+
+  if (res.ok) {
+    const summary = json.summary || {};
+    const errors = json.errors || [];
+    const partial = summary.partial_success;
+
+    let alertType = 'success';
+    if (partial) {
+      alertType = 'warning';  // some rows failed, some succeeded
     }
-  } catch (err) {
-    showAlert('Error uploading CSV.', 'error');
-    console.error(err);
+
+    showAlert(json.message || 'CSV processed!', alertType);
+    renderCsvErrors(errors);  // 🔹 show row-level issues, if any
+
+    await loadAvailability();
+  } else {
+    // Hard failure: still try to show details if present
+    const errors = json.errors || (json.error ? [json.error] : []);
+    showAlert(json.error || 'CSV upload failed...', 'error');
+    renderCsvErrors(errors);
   }
 
   // Reset file input + label text after upload
@@ -280,6 +319,60 @@ async function handleCsvUpload(event) {
     label.style.background = '';
   }
 }
+
+function renderCsvErrors(errors) {
+  const panel = document.getElementById('csvErrorPanel');
+  const list = document.getElementById('csvErrorList');
+  if (!panel || !list) return;
+
+  list.innerHTML = '';
+
+  if (!errors || errors.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  errors.forEach(msg => {
+    const li = document.createElement('li');
+    li.textContent = msg;
+    list.appendChild(li);
+  });
+
+  panel.style.display = 'block';
+}
+
+async function exportCsv() {
+  if (!currentTermId) {
+    showAlert('Please select a term first.', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/availability/api/v1/availability/export?term_id=${currentTermId}`);
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      showAlert(json.error || 'Failed to export CSV...', 'error');
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `availability_term_${currentTermId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    showAlert('CSV exported successfully.', 'success');
+  } catch (err) {
+    console.error(err);
+    showAlert('An error occurred while exporting CSV.', 'error');
+  }
+}
+
 
 // ---------- DOM Ready ----------
 document.addEventListener('DOMContentLoaded', () => {
@@ -315,4 +408,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  const clearAllBtn = document.getElementById('clearAllButton');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllAvailability);
+  }
+
+  const exportBtn = document.getElementById('exportCsvButton');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportCsv);
+  }
+  
 });

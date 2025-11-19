@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app, send_from_directory
+from flask import Blueprint, request, jsonify, current_app, send_from_directory, Response
 from blueprints.availability import availability_bp
 from flask_login import current_user, login_required
 from models import db, User, Availability, Term
@@ -192,6 +192,9 @@ def upload_availability_csv():
         aggregated = {}
         errors = []
         any_error = False
+        total_rows = 0
+        success_rows = 0
+        error_rows = 0
 
         for row in reader:
             name = (row.get('name') or '').strip()
@@ -199,15 +202,26 @@ def upload_availability_csv():
             start_raw = (row.get('start_time') or '').strip()
             end_raw = (row.get('end_time') or '').strip()
 
+            # Skip completely empty rows (e.g. trailing blank line)
+            if not (name or day_raw or start_raw or end_raw):
+                continue
+
+            total_rows += 1
+
             if not name or not day_raw or not start_raw or not end_raw:
                 any_error = True
-                errors.append("CSV row missing required fields.")
+                error_rows += 1
+                errors.append(f"Row {total_rows}: missing required fields.")
                 continue
 
             user = User.query.filter_by(name=name).first()
             if not user:
                 any_error = True
-                errors.append(f"User '{name}' from CSV not found.")
+                error_rows += 1
+                errors.append(
+                    f"Row {total_rows}: user '{name}' not found. "
+                    "Check spelling or create this user first."
+                )
                 continue
 
             day_key = day_raw.capitalize()[:3]
@@ -217,11 +231,15 @@ def upload_availability_csv():
                 end_time = datetime.strptime(end_raw, '%H:%M').time()
             except ValueError:
                 any_error = True
+                error_rows += 1
                 errors.append(
-                    f"Invalid time in CSV for {name} on {day_raw}: '{start_raw}-{end_raw}'"
+                    f"Row {total_rows}: invalid time for {name} on {day_raw}: "
+                    f"'{start_raw}-{end_raw}'. Expected HH:MM (e.g. 09:00)."
                 )
                 continue
 
+            # If we got here, this row is valid
+            success_rows += 1
             aggregated.setdefault((user.user_id, day_key), []).append((start_time, end_time))
 
         # Overwrite per (user, day)
@@ -243,15 +261,97 @@ def upload_availability_csv():
 
         db.session.commit()
 
-        status = 207 if any_error else 200
+        # Decide status + top-level message
+        if success_rows == 0:
+            # Nothing imported – treat as real failure
+            status = 400
+            message = "CSV processed but no rows were imported. Please fix the errors and try again."
+        elif any_error:
+            # Partial success
+            status = 207  # Multi-Status
+            message = (
+                f"CSV processed with some issues: {success_rows}/{total_rows} "
+                "rows were imported."
+            )
+        else:
+            # All good
+            status = 200
+            message = f"CSV processed successfully: {success_rows}/{total_rows} rows imported."
+
         return jsonify({
-            "message": "CSV processed",
-            "errors": errors
+            "message": message,
+            "errors": errors,
+            "summary": {
+                "total_rows": total_rows,
+                "processed_rows": success_rows,
+                "error_rows": error_rows,
+                "partial_success": any_error and success_rows > 0
+            }
         }), status
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Error uploading CSV: {e}"}), 500
+
+# --------- Export Availability into CSV ---------
+@availability_bp.route('/api/v1/availability/export', methods=['GET'])
+@login_required
+def export_availability_csv():
+    term_id = request.args.get('term_id', type=int)
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
+
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
+
+    
+    if current_user.role.lower() == 'supervisor':
+        all_availability = Availability.query.join(User).filter(
+            Availability.term_id == term_id
+        ).all()
+    else:
+        all_availability = Availability.query.filter_by(
+            user_id=current_user.user_id,
+            term_id=term_id
+        ).all()
+
+    # Map 3-letter day keys back to full names for CSV
+    day_full_map = {
+        'Mon': 'Monday',
+        'Tue': 'Tuesday',
+        'Wed': 'Wednesday',
+        'Thu': 'Thursday',
+        'Fri': 'Friday',
+        'Sat': 'Saturday',
+        'Sun': 'Sunday',
+    }
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header row
+    writer.writerow(['name', 'day_of_week', 'start_time', 'end_time'])
+
+    for a in all_availability:
+        name = a.user.name
+        day_key = a.day_of_week[:3].capitalize()
+        day_full = day_full_map.get(day_key, a.day_of_week)
+        start_str = a.start_time.strftime("%H:%M")
+        end_str = a.end_time.strftime("%H:%M")
+        writer.writerow([name, day_full, start_str, end_str])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    filename = f"availability_term_{term_id}.csv"
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
 
 
 # --------- REST API: clear one student's availability for this term ---------
@@ -276,3 +376,26 @@ def clear_row():
     db.session.commit()
 
     return jsonify({"message": f"Cleared availability for {student_name} in term {term_id}"}), 200
+
+@availability_bp.route('/api/v1/availability/clear-all', methods=['POST'])
+@login_required
+def clear_all_availability():
+    data = request.get_json(silent=True) or {}
+    term_id = data.get("term_id")
+
+    if not term_id:
+        return jsonify({"error": "term_id is required"}), 400
+
+    term = Term.query.get(term_id)
+    if not term:
+        return jsonify({"error": "Term not found"}), 404
+
+    # Delete all availability rows for this term
+    deleted_count = Availability.query.filter_by(term_id=term_id).delete(synchronize_session=False)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Cleared {deleted_count} availability entries for term '{term.name}'.",
+        "deleted": deleted_count,
+        "term_id": term_id
+    }), 200
