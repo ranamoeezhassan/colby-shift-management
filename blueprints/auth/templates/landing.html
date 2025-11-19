@@ -91,8 +91,8 @@
 <!-- Violation Alert Widget - Hidden for students -->
 {% if current_user.role != 'student' %}
 {% if violation_summary and violation_summary.total_violations > 0 %}
-<div class="violation-alert-widget {% if violation_summary.by_severity.critical > 0 %}critical{% elif violation_summary.by_severity.error > 0 %}warning{% endif %}" 
-     data-href="{{ url_for('constraints.violation_alerts') }}" style="cursor: pointer;">
+<div class="violation-alert-widget critical" 
+     data-href="{{ url_for('constraints.validation_dashboard') }}" style="cursor: pointer;">
     <div class="violation-count">{{ violation_summary.total_violations }}</div>
     <div class="violation-text">
         {% if violation_summary.total_violations == 1 %}
@@ -123,7 +123,7 @@
     </div>
 </div>
 {% elif violation_summary %}
-<div class="violation-alert-widget none" data-href="{{ url_for('constraints.violation_alerts') }}" style="cursor: pointer;">
+<div class="violation-alert-widget none" data-href="{{ url_for('constraints.validation_dashboard') }}" style="cursor: pointer;">
     <div class="violation-count">✓</div>
     <div class="violation-text">No Active Violations</div>
 </div>

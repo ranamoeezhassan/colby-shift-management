@@ -223,7 +223,7 @@ class TestConstraintsRoutes:
                 'end_time': '11:00'  # 2 hours - valid
             }
             
-            response = client.post('/constraints/validate-shift',
+            response = client.post('/constraints/api/validations/shift',
                                  data=json.dumps(valid_data),
                                  content_type='application/json')
             
@@ -239,7 +239,7 @@ class TestConstraintsRoutes:
                 'end_time': '09:30'  # 30 minutes - too short
             }
             
-            response = client.post('/constraints/validate-shift',
+            response = client.post('/constraints/api/validations/shift',
                                  data=json.dumps(invalid_data),
                                  content_type='application/json')
             
@@ -419,16 +419,6 @@ class TestConstraintsRoutes:
             assert data['success'] is True
             assert 'report_id' in data
     
-    def test_gap_management_interface(self, app, client, db_session, sample_user):
-        """Test the gap management interface."""
-        with app.app_context():
-            with client.session_transaction() as sess:
-                sess['_user_id'] = str(sample_user.user_id)
-                sess['_fresh'] = True
-            
-            response = client.get('/constraints/gap-management')
-            assert response.status_code == 200
-    
     def test_transition_violations_interface(self, app, client, db_session, sample_user):
         """Test the transition violations interface."""
         with app.app_context():
@@ -452,7 +442,7 @@ class TestConstraintsRoutes:
                 'end_time': '11:00'
             }
             
-            response = client.post('/constraints/validate-shift',
+            response = client.post('/constraints/api/validations/shift',
                                  data=json.dumps(invalid_data),
                                  content_type='application/json')
             
@@ -525,7 +515,7 @@ class TestConstraintsIntegration:
                 'end_time': '11:00'
             }
             
-            response = client.post('/constraints/validate-shift',
+            response = client.post('/constraints/api/validations/shift',
                                  data=json.dumps(validation_data),
                                  content_type='application/json')
             assert response.status_code == 200

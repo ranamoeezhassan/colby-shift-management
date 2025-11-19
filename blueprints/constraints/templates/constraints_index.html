@@ -1,135 +1,358 @@
 {% extends "base.html" %}
 
-{% block title %}Constraints & Equity - Colby Shift Management{% endblock %}
+{% block title %}Schedule Constraints - Colby Shift Management{% endblock %}
 
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('constraints.static', filename='constraints.css') }}">
+<style>
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 60px 20px;
+    margin: -20px -20px 40px -20px;
+    text-align: center;
+    border-radius: 0 0 20px 20px;
+}
+
+.hero-title {
+    font-size: 3em;
+    font-weight: 700;
+    margin-bottom: 15px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.hero-subtitle {
+    font-size: 1.3em;
+    opacity: 0.9;
+    margin-bottom: 30px;
+    font-weight: 300;
+}
+
+.hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.hero-btn {
+    padding: 15px 30px;
+    font-size: 1.1em;
+    font-weight: 600;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    text-decoration: none;
+    border-radius: 50px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.hero-btn:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,255,255,0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.hero-btn.primary {
+    background: #28a745;
+    border-color: #28a745;
+    font-size: 1.3em;
+    padding: 18px 40px;
+}
+
+.hero-btn.primary:hover {
+    background: #218838;
+    border-color: #1e7e34;
+}
+
+.main-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.workflow-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 25px;
+    margin: 40px 0;
+}
+
+.workflow-card {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border-left: 5px solid #007bff;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.workflow-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #007bff, #6f42c1);
+}
+
+.workflow-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.workflow-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.workflow-icon {
+    font-size: 3em;
+    margin-right: 20px;
+    background: linear-gradient(135deg, #007bff, #6f42c1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.workflow-title {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #333;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.workflow-description {
+    color: #666;
+    font-size: 1.1em;
+    margin-bottom: 25px;
+    line-height: 1.5;
+}
+
+.workflow-action {
+    display: inline-block;
+    background: linear-gradient(135deg, #007bff, #6f42c1);
+    color: white;
+    padding: 12px 25px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+.workflow-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+    color: white;
+}
+
+.status-section {
+    background: #f8f9fa;
+    border-radius: 15px;
+    padding: 30px;
+    margin: 40px 0;
+    border: 1px solid #e9ecef;
+}
+
+.status-title {
+    font-size: 1.8em;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 25px;
+    display: flex;
+    align-items: center;
+}
+
+.status-title::before {
+    content: '📊';
+    margin-right: 15px;
+    font-size: 1.2em;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.status-item {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid #dee2e6;
+}
+
+.status-value {
+    font-size: 2.5em;
+    font-weight: 700;
+    color: #007bff;
+    margin-bottom: 10px;
+}
+
+.status-label {
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.advanced-section {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    margin: 40px 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.advanced-title {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.advanced-link {
+    padding: 15px 20px;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    text-decoration: none;
+    color: #495057;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+}
+
+.advanced-link:hover {
+    border-color: #007bff;
+    background: #f8f9fa;
+    color: #007bff;
+}
+
+.advanced-link::before {
+    margin-right: 12px;
+    font-size: 1.2em;
+}
+
+.validation-link::before { content: '📊'; }
+.alerts-link::before { content: '🚨'; }
+.admin-link::before { content: '📋'; }
+</style>
 {% endblock %}
 
-{% block header_title %}Constraints & Equity{% endblock %}
-{% block header_subtitle %}Manage shift rules, duration policies, and preference settings{% endblock %}
-
 {% block content %}
-<div class="dashboard-options">
-    <!-- Core Policy Management -->
-    <div class="category-section">
-        <div class="category-header">
-            Core Policy Management
-        </div>
-        <div class="category-items">
-            <div class="dashboard-row">
-                <a href="{{ url_for('constraints.policy_config') }}" class="dashboard-btn primary">
-                    <div class="btn-content">
-                        <h3>⚙️ Policy Configuration</h3>
-                        <p>Set shift length limits, break times, and undesirable windows</p>
-                    </div>
-                </a>
+<div class="hero-section">
+    <h1 class="hero-title">Schedule Constraints</h1>
+    <p class="hero-subtitle">Configure rules and constraints for schedule optimization</p>
+    
+    <div class="hero-actions">
+        <a href="{{ url_for('constraints.constraints_setup') }}" class="hero-btn primary">
+            🎯 Setup Constraints
+        </a>
+        <a href="{{ url_for('constraints.validation_dashboard') }}" class="hero-btn">
+            📊 Validation Dashboard
+        </a>
+    </div>
+</div>
 
-                <a href="{{ url_for('constraints.admin_settings') }}" class="dashboard-btn primary">
-                    <div class="btn-content">
-                        <h3>🔧 Admin Settings</h3>
-                        <p>Configure shift duration policies with audit logging</p>
-                    </div>
-                </a>
+<div class="main-content">
+    <!-- Primary Workflow Section -->
+    <div class="workflow-section">
+        <!-- Simple Setup -->
+        <div class="workflow-card">
+            <div class="workflow-header">
+                <div class="workflow-icon">🎯</div>
+                <h2 class="workflow-title">Constraint Setup</h2>
             </div>
-            
-            <a href="{{ url_for('constraints.duration_validation_interface') }}" class="dashboard-btn primary">
-                <div class="btn-content">
-                    <h3>✅ Duration Validation</h3>
-                    <p>Test and validate shift duration constraints</p>
-                </div>
+            <p class="workflow-description">
+                Configure basic scheduling rules and time restrictions in 4 simple steps. Perfect for new supervisors.
+            </p>
+            <a href="{{ url_for('constraints.constraints_setup') }}" class="workflow-action">
+                Setup Constraints
+            </a>
+        </div>
+
+        <!-- Student Management -->
+        <div class="workflow-card">
+            <div class="workflow-header">
+                <div class="workflow-icon">👥</div>
+                <h2 class="workflow-title">Student Management</h2>
+            </div>
+            <p class="workflow-description">
+                Manage student availability, volunteer preferences, and special scheduling needs.
+            </p>
+            <a href="{{ url_for('constraints.volunteer_preferences') }}" class="workflow-action">
+                Manage Students
+            </a>
+        </div>
+
+        <!-- Schedule Analysis -->
+        <div class="workflow-card">
+            <div class="workflow-header">
+                <div class="workflow-icon">📈</div>
+                <h2 class="workflow-title">Schedule Analysis</h2>
+            </div>
+            <p class="workflow-description">
+                Review validation reports, check for violations, and analyze schedule effectiveness.
+            </p>
+            <a href="{{ url_for('constraints.validation_dashboard') }}" class="workflow-action">
+                View Analysis
             </a>
         </div>
     </div>
 
-    <!-- Gap & Transition Management -->
-    <div class="category-section">
-        <div class="category-header">
-            Gap & Transition Management
-        </div>
-        <div class="category-items">
-            <div class="dashboard-row">
-                <a href="{{ url_for('constraints.gap_management') }}" class="dashboard-btn primary">
-                    <div class="btn-content">
-                        <h3>📏 Gap Management</h3>
-                        <p>Prevent fragmented 15-30 minute slots and manage schedule gaps intelligently</p>
-                    </div>
-                </a>
 
-                <a href="{{ url_for('constraints.transition_violations') }}" class="dashboard-btn primary">
-                    <div class="btn-content">
-                        <h3>⏱️ Transition Time Violations</h3>
-                        <p>Monitor and manage minimum break time between consecutive shifts</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-    </div>
 
-    <!-- Violation Detection & Reports -->
-    <div class="category-section">
-        <div class="category-header">
-            Violation Detection & Reports
-        </div>
-        <div class="category-items">
-            <div class="dashboard-row">
-                <a href="{{ url_for('constraints.violation_alerts') }}" class="dashboard-btn warning">
-                    <div class="btn-content">
-                        <h3>⚠️ Violation Alerts</h3>
-                        <p>Visual alerts for shifts violating duration rules</p>
-                    </div>
-                </a>
-
-                <a href="{{ url_for('constraints.validation_reports') }}" class="dashboard-btn secondary">
-                    <div class="btn-content">
-                        <h3>📊 Validation Summary Reports</h3>
-                        <p>Generate comprehensive reports listing all duration violations for quality review</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Preferences -->
-    <div class="category-section">
-        <div class="category-header">
-            Preferences
-        </div>
-        <div class="category-items">
-            <div class="dashboard-row">
-                <a href="{{ url_for('constraints.volunteer_preferences') }}" class="dashboard-btn secondary">
-                    <div class="btn-content">
-                        <h3>🙋 Volunteer Preferences</h3>
-                        <p>Mark students as volunteers for early/late shifts</p>
-                    </div>
-                </a>
-
-                <a href="{{ url_for('constraints.undesirable_windows') }}" class="dashboard-btn secondary">
-                    <div class="btn-content">
-                        <h3>🚫 Undesirable Time Windows</h3>
-                        <p>Define time periods to avoid when scheduling (early morning, late evening, weekends)</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Automation Tools -->
-    <div class="category-section">
-        <div class="category-header">
-            Automation Tools
-        </div>
-        <div class="category-items">
-            <a href="{{ url_for('constraints.automatic_rejection_interface') }}" class="dashboard-btn primary">
-                <div class="btn-content">
-                    <h3>🤖 Automatic Processing</h3>
-                    <p>Test automatic rejection and splitting of shifts</p>
-                </div>
+    <!-- Advanced Features -->
+    <div class="advanced-section">
+        <h3 class="advanced-title">🔧 Advanced Features</h3>
+        <p style="color: #6c757d; margin-bottom: 25px;">
+            Access detailed configuration options and specialized constraint management tools.
+        </p>
+        
+        <div class="advanced-grid">
+            <a href="{{ url_for('constraints.validation_dashboard') }}" class="advanced-link validation-link">
+                Validation Dashboard
+            </a>
+            <a href="{{ url_for('constraints.policy_management') }}" class="advanced-link admin-link">
+                Policy Management
             </a>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block footer %}<a href="{{ url_for('auth.shiftManagement') }}">← Back to Dashboard</a>{% endblock %}
+<script>
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    if (sessionStorage.getItem('constraintsSaved') === '1') {
+        showSavedToast();
+        sessionStorage.removeItem('constraintsSaved');
+    }
+});
+
+function showSavedToast() {
+    const t = document.createElement('div');
+    t.textContent = 'Constraints updated successfully';
+    t.style.cssText = 'position:fixed; top:20px; right:20px; background:#28a745; color:#fff; padding:12px 18px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.15); z-index:1000; font-size:0.9em;';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),3000);
+}
+</script>
+{% endblock %}
 

@@ -139,8 +139,8 @@
                 <p><strong>{{ gap_analysis.merge_recommendations|length }}</strong> gaps can be automatically merged.</p>
                 {% endif %}
             </div>
-            <a href="{{ url_for('constraints.gap_management', term_id=term.term_id) }}" class="btn btn-secondary">
-                View Gap Management →
+                        <a href="{{ url_for('constraints.validation_dashboard') }}" class="btn btn-secondary">
+                📊 View Validation Dashboard
             </a>
         </div>
         {% endif %}

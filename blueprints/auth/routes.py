@@ -2,6 +2,7 @@ from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from models import db, User
 import os
+import uuid
 from dotenv import load_dotenv
 
 from . import auth_bp
@@ -95,4 +96,164 @@ def logout():
     logout_user()
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.shiftManagement'))
+
+# Student Management Routes
+@auth_bp.route('/students')
+@login_required
+def student_management():
+    """Student management dashboard"""
+    if current_user.role == 'student':
+        flash('Access denied. Supervisor privileges required.', 'error')
+        return redirect(url_for('auth.shiftManagement'))
+    
+    return render_template('student_management.html')
+
+@auth_bp.route('/api/students', methods=['GET'])
+@login_required
+def list_students_api():
+    """API to list all students"""
+    if current_user.role == 'student':
+        return {'success': False, 'error': 'Access denied'}, 403
+    
+    try:
+        students = User.query.filter_by(role='student', is_active=True).all()
+        students_data = []
+        
+        for student in students:
+            student_data = {
+                'user_id': student.user_id,
+                'name': student.name,
+                'email': student.email,
+                'is_active': student.is_active,
+                'calendar_token': student.calendar_token,
+                'total_shifts': len(student.shifts) if student.shifts else 0,
+                'total_hours': sum([shift.duration_minutes / 60 for shift in student.shifts]) if student.shifts else 0
+            }
+            students_data.append(student_data)
+        
+        return {
+            'success': True,
+            'students': students_data,
+            'total': len(students_data)
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e)}, 500
+
+@auth_bp.route('/api/students', methods=['POST'])
+@login_required
+def create_student_api():
+    """API to create a new student"""
+    if current_user.role == 'student':
+        return {'success': False, 'error': 'Access denied'}, 403
+    
+    try:
+        data = request.get_json()
+        
+        # Validation
+        required_fields = ['name', 'email', 'password']
+        for field in required_fields:
+            if not data.get(field):
+                return {'success': False, 'error': f'Field {field} is required'}, 400
+        
+        # Check if email already exists
+        existing_user = User.query.filter_by(email=data['email']).first()
+        if existing_user:
+            return {'success': False, 'error': 'Email already exists'}, 400
+        
+        # Create new student
+        student = User(
+            name=data['name'],
+            email=data['email'],
+            role='student',
+            is_active=True
+        )
+        student.set_password(data['password'])
+        
+        # Generate calendar token
+        student.calendar_token = str(uuid.uuid4())
+        
+        db.session.add(student)
+        db.session.commit()
+        
+        return {
+            'success': True,
+            'message': 'Student created successfully',
+            'student': {
+                'user_id': student.user_id,
+                'name': student.name,
+                'email': student.email,
+                'calendar_token': student.calendar_token
+            }
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {'success': False, 'error': str(e)}, 500
+
+@auth_bp.route('/api/students/<int:student_id>', methods=['PUT'])
+@login_required
+def update_student_api(student_id):
+    """API to update a student"""
+    if current_user.role == 'student':
+        return {'success': False, 'error': 'Access denied'}, 403
+    
+    try:
+        student = User.query.get(student_id)
+        if not student or student.role != 'student':
+            return {'success': False, 'error': 'Student not found'}, 404
+        
+        data = request.get_json()
+        
+        # Update fields
+        if 'name' in data:
+            student.name = data['name']
+        if 'email' in data:
+            # Check if new email already exists
+            existing = User.query.filter_by(email=data['email']).first()
+            if existing and existing.user_id != student.user_id:
+                return {'success': False, 'error': 'Email already exists'}, 400
+            student.email = data['email']
+        if 'password' in data and data['password']:
+            student.set_password(data['password'])
+        if 'is_active' in data:
+            student.is_active = data['is_active']
+        
+        db.session.commit()
+        
+        return {
+            'success': True,
+            'message': 'Student updated successfully',
+            'student': {
+                'user_id': student.user_id,
+                'name': student.name,
+                'email': student.email,
+                'is_active': student.is_active
+            }
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {'success': False, 'error': str(e)}, 500
+
+@auth_bp.route('/api/students/<int:student_id>', methods=['DELETE'])
+@login_required
+def delete_student_api(student_id):
+    """API to deactivate/delete a student"""
+    if current_user.role == 'student':
+        return {'success': False, 'error': 'Access denied'}, 403
+    
+    try:
+        student = User.query.get(student_id)
+        if not student or student.role != 'student':
+            return {'success': False, 'error': 'Student not found'}, 404
+        
+        # Instead of deleting, deactivate the student to preserve shift history
+        student.is_active = False
+        db.session.commit()
+        
+        return {
+            'success': True,
+            'message': 'Student deactivated successfully'
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {'success': False, 'error': str(e)}, 500
 
