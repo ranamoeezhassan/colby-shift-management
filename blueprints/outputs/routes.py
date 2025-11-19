@@ -5,6 +5,13 @@ from . import outputs_bp
 import csv
 from io import StringIO
 from datetime import datetime, date
+from cache import (
+    cache,
+    student_summary_key,
+    schedule_preview_key,
+    outputs_index_key,
+    all_students_weeks_key,
+)
 try:
     from icalendar import Calendar, Event
     ICALENDAR_AVAILABLE = True
@@ -53,8 +60,18 @@ def index():
     
     # Get current term and shift count
     term = Term.query.order_by(Term.start_date.desc()).first()
-    shift_count = Shift.query.count() if term else 0
-    student_count = User.query.filter_by(role='student').count()
+
+    def _compute_index_stats():
+        """Small aggregate stats for the Outputs landing page."""
+        return {
+            "shift_count": Shift.query.count() if term else 0,
+            "student_count": User.query.filter_by(role='student').count(),
+        }
+
+    stats = cache.get_or_set(outputs_index_key(), _compute_index_stats, ttl_seconds=120)
+
+    shift_count = stats.get("shift_count", 0)
+    student_count = stats.get("student_count", 0)
     
     return render_template('outputs_index.html', 
                           term=term, 
@@ -451,11 +468,25 @@ def student_view(user_id):
     weekly_hours = 0
     weekly_shift_count = 0
     if current_week:
-        for shift in current_week['shifts']:
-            shift_start = datetime.combine(shift.date, shift.start_time)
-            shift_end = datetime.combine(shift.date, shift.end_time)
-            weekly_hours += (shift_end - shift_start).seconds / 3600
-        weekly_shift_count = len(current_week['shifts'])
+        week_start = current_week['week_start']
+        cache_key = student_summary_key(
+            student.user_id, week_start.isoformat()
+        )
+
+        def _compute_week_summary():
+            hours = 0.0
+            for shift in current_week['shifts']:
+                shift_start = datetime.combine(shift.date, shift.start_time)
+                shift_end = datetime.combine(shift.date, shift.end_time)
+                hours += (shift_end - shift_start).seconds / 3600
+            return {
+                "weekly_hours": hours,
+                "weekly_shift_count": len(current_week['shifts']),
+            }
+
+        summary = cache.get_or_set(cache_key, _compute_week_summary, ttl_seconds=300)
+        weekly_hours = summary.get("weekly_hours", 0.0)
+        weekly_shift_count = summary.get("weekly_shift_count", 0)
     
     return render_template('student_view.html', 
                           student=student,
@@ -507,11 +538,25 @@ def public_schedule_view(token):
     weekly_hours = 0
     weekly_shift_count = 0
     if current_week:
-        for shift in current_week['shifts']:
-            shift_start = datetime.combine(shift.date, shift.start_time)
-            shift_end = datetime.combine(shift.date, shift.end_time)
-            weekly_hours += (shift_end - shift_start).seconds / 3600
-        weekly_shift_count = len(current_week['shifts'])
+        week_start = current_week['week_start']
+        cache_key = student_summary_key(
+            student.user_id, week_start.isoformat()
+        )
+
+        def _compute_week_summary():
+            hours = 0.0
+            for shift in current_week['shifts']:
+                shift_start = datetime.combine(shift.date, shift.start_time)
+                shift_end = datetime.combine(shift.date, shift.end_time)
+                hours += (shift_end - shift_start).seconds / 3600
+            return {
+                "weekly_hours": hours,
+                "weekly_shift_count": len(current_week['shifts']),
+            }
+
+        summary = cache.get_or_set(cache_key, _compute_week_summary, ttl_seconds=300)
+        weekly_hours = summary.get("weekly_hours", 0.0)
+        weekly_shift_count = summary.get("weekly_shift_count", 0)
     
     return render_template('public_schedule_view.html', 
                           student=student,
@@ -536,14 +581,23 @@ def all_students_view():
     # Get all students
     students = User.query.filter_by(role='student').order_by(User.name).all()
     
-    # Get all weeks from all shifts to establish common week range
+    # Get all weeks from all shifts to establish common week range.
+    # This is shared across different supervisors and filters, so we cache it.
     from datetime import timedelta
-    all_shifts = Shift.query.order_by(Shift.date).all()
-    weeks_set = set()
-    for shift in all_shifts:
-        week_start = shift.date - timedelta(days=shift.date.weekday())
-        weeks_set.add(week_start)
-    all_weeks = sorted(list(weeks_set))
+
+    def _compute_all_weeks():
+        all_shifts = Shift.query.order_by(Shift.date).all()
+        weeks_set = set()
+        for shift in all_shifts:
+            week_start = shift.date - timedelta(days=shift.date.weekday())
+            weeks_set.add(week_start)
+        return sorted(list(weeks_set))
+
+    all_weeks = cache.get_or_set(
+        all_students_weeks_key(),
+        _compute_all_weeks,
+        ttl_seconds=300,
+    )
     
     # Ensure week_index is valid
     week_index = max(0, min(week_index, len(all_weeks) - 1)) if all_weeks else 0
@@ -555,23 +609,44 @@ def all_students_view():
     for student in students:
         # Get shifts for current week only
         if current_week_start:
-            weekly_shifts = [s for s in student.shifts 
-                           if current_week_start <= s.date <= current_week_end]
+            weekly_shifts = [s for s in student.shifts
+                             if current_week_start <= s.date <= current_week_end]
         else:
             weekly_shifts = []
         
         # Calculate weekly hours
-        weekly_hours = 0
-        for shift in weekly_shifts:
-            shift_start = datetime.combine(shift.date, shift.start_time)
-            shift_end = datetime.combine(shift.date, shift.end_time)
-            weekly_hours += (shift_end - shift_start).seconds / 3600
+        weekly_hours = 0.0
+        if weekly_shifts and current_week_start:
+            cache_key = student_summary_key(
+                student.user_id, current_week_start.isoformat()
+            )
+
+            def _compute_week_summary_for_student():
+                hours = 0.0
+                for shift in weekly_shifts:
+                    shift_start = datetime.combine(shift.date, shift.start_time)
+                    shift_end = datetime.combine(shift.date, shift.end_time)
+                    hours += (shift_end - shift_start).seconds / 3600
+                return {
+                    "weekly_hours": hours,
+                    "weekly_shift_count": len(weekly_shifts),
+                }
+
+            summary = cache.get_or_set(
+                cache_key, _compute_week_summary_for_student, ttl_seconds=300
+            )
+            weekly_hours = summary.get("weekly_hours", 0.0)
+            weekly_shift_count = summary.get("weekly_shift_count", 0)
+        else:
+            weekly_shift_count = len(weekly_shifts)
         
-        students_with_counts.append({
-            'student': student,
-            'shift_count': len(weekly_shifts),
-            'weekly_hours': weekly_hours
-        })
+        students_with_counts.append(
+            {
+                "student": student,
+                "shift_count": weekly_shift_count,
+                "weekly_hours": weekly_hours,
+            }
+        )
     
     # Apply search filter
     if search_query:
@@ -662,14 +737,31 @@ def compare_students():
         student_data['week_index'] = min(week_index, len(student_data['all_weeks']) - 1) if student_data['all_weeks'] else 0
         current_week = student_data['all_weeks'][student_data['week_index']] if student_data['all_weeks'] else None
         
-        weekly_hours = 0
+        weekly_hours = 0.0
         weekly_shift_count = 0
         if current_week:
-            for shift in current_week['shifts']:
-                shift_start = datetime.combine(shift.date, shift.start_time)
-                shift_end = datetime.combine(shift.date, shift.end_time)
-                weekly_hours += (shift_end - shift_start).seconds / 3600
-            weekly_shift_count = len(current_week['shifts'])
+            week_start = current_week['week_start']
+            student = student_data['student']
+            cache_key = student_summary_key(
+                student.user_id, week_start.isoformat()
+            )
+
+            def _compute_week_summary_for_student():
+                hours = 0.0
+                for shift in current_week['shifts']:
+                    shift_start = datetime.combine(shift.date, shift.start_time)
+                    shift_end = datetime.combine(shift.date, shift.end_time)
+                    hours += (shift_end - shift_start).seconds / 3600
+                return {
+                    "weekly_hours": hours,
+                    "weekly_shift_count": len(current_week['shifts']),
+                }
+
+            summary = cache.get_or_set(
+                cache_key, _compute_week_summary_for_student, ttl_seconds=300
+            )
+            weekly_hours = summary.get("weekly_hours", 0.0)
+            weekly_shift_count = summary.get("weekly_shift_count", 0)
         
         student_data['weekly_hours'] = weekly_hours
         student_data['weekly_shift_count'] = weekly_shift_count
@@ -695,110 +787,158 @@ def preview():
         term = Term.query.order_by(Term.start_date.desc()).first()
     
     if not term:
-        return render_template('preview.html', current_week=None, all_weeks=[], 
-                             week_index=0, term=None, policy=None, students=[])
+        return render_template(
+            'preview.html',
+            current_week=None,
+            all_weeks=[],
+            week_index=0,
+            term=None,
+            policy=None,
+            students=[],
+        )
     
     # Get policy for constraints
     policy = Policy.query.filter_by(term_id=term.term_id).first()
-    
-    # Get all shifts for the term
-    shifts = Shift.query.filter_by(term_id=term.term_id).order_by(
-        Shift.date, Shift.start_time
-    ).all()
-    
-    # Get all students
+    # Full student list is used by the preview template/sidebar and is cheap
+    # compared to the schedule grid itself, so we fetch it directly.
     students = User.query.filter_by(role='student').order_by(User.name).all()
     
-    # Group shifts by week
     from datetime import timedelta
-    weeks_dict = {}
-    
-    for shift in shifts:
-        # Get Monday of the week
-        week_start = shift.date - timedelta(days=shift.date.weekday())
-        
-        if week_start not in weeks_dict:
-            weeks_dict[week_start] = {
-                'week_start': week_start,
-                'week_end': week_start + timedelta(days=6),
-                'week_dates': [week_start + timedelta(days=i) for i in range(7)],
-                'days': {}
+
+    def _compute_preview_data():
+        # Get all shifts for the term
+        shifts = Shift.query.filter_by(term_id=term.term_id).order_by(
+            Shift.date, Shift.start_time
+        ).all()
+
+        weeks_dict = {}
+
+        for shift in shifts:
+            # Get Monday of the week
+            week_start = shift.date - timedelta(days=shift.date.weekday())
+
+            if week_start not in weeks_dict:
+                weeks_dict[week_start] = {
+                    'week_start': week_start,
+                    'week_end': week_start + timedelta(days=6),
+                    'week_dates': [week_start + timedelta(days=i) for i in range(7)],
+                    'days': {},
+                }
+
+            if shift.date not in weeks_dict[week_start]['days']:
+                weeks_dict[week_start]['days'][shift.date] = []
+
+            # Calculate duration and check constraints
+            shift_start_dt = datetime.combine(date.today(), shift.start_time)
+            shift_end_dt = datetime.combine(date.today(), shift.end_time)
+            duration_minutes = (shift_end_dt - shift_start_dt).seconds / 60
+            duration = duration_minutes / 60
+
+            constraint_passed = True
+            constraint_warnings = []
+
+            if policy:
+                if duration_minutes < policy.min_shift_length:
+                    constraint_passed = False
+                    constraint_warnings.append('Short')
+                if duration_minutes > policy.max_shift_length:
+                    constraint_passed = False
+                    constraint_warnings.append('Long')
+                start_time_int = shift.start_time.hour * 100 + shift.start_time.minute
+                end_time_int = shift.end_time.hour * 100 + shift.end_time.minute
+                if start_time_int < policy.undesireable_start:
+                    constraint_warnings.append('Early')
+                if end_time_int > policy.undesireable_end:
+                    constraint_warnings.append('Late')
+
+            shift_payload = {
+                'shift_id': shift.shift_id,
+                'date': shift.date,
+                'start_time': shift.start_time,
+                'end_time': shift.end_time,
+                'was_manually_adjusted': shift.was_manually_adjusted,
+                'user': {
+                    'user_id': shift.user.user_id,
+                    'name': shift.user.name,
+                    'email': shift.user.email,
+                },
             }
-        
-        if shift.date not in weeks_dict[week_start]['days']:
-            weeks_dict[week_start]['days'][shift.date] = []
-        
-        # Calculate duration and check constraints
-        shift_start = datetime.combine(date.today(), shift.start_time)
-        shift_end = datetime.combine(date.today(), shift.end_time)
-        duration_minutes = (shift_end - shift_start).seconds / 60  # Duration in minutes to match policy units
-        duration = duration_minutes / 60  # Duration in hours for display
-        
-        constraint_passed = True
-        constraint_warnings = []
-        
-        if policy:
-            if duration_minutes < policy.min_shift_length:
-                constraint_passed = False
-                constraint_warnings.append(f'Short')
-            if duration_minutes > policy.max_shift_length:
-                constraint_passed = False
-                constraint_warnings.append(f'Long')
-            # Convert time to HHMM format for comparison (e.g., 8:30 -> 830)
-            start_time_int = shift.start_time.hour * 100 + shift.start_time.minute
-            end_time_int = shift.end_time.hour * 100 + shift.end_time.minute
-            if start_time_int < policy.undesireable_start:
-                constraint_warnings.append('Early')
-            if end_time_int > policy.undesireable_end:
-                constraint_warnings.append('Late')
-        
-        weeks_dict[week_start]['days'][shift.date].append({
-            'shift': shift,
-            'duration': duration,
-            'constraint_passed': constraint_passed,
-            'warnings': constraint_warnings
-        })
-    
-    # Calculate overlaps for each day
-    for week_data in weeks_dict.values():
-        for day_date, day_shifts in week_data['days'].items():
-            # Convert times to minutes for each shift
-            shift_times = []
-            for shift_data in day_shifts:
-                shift = shift_data['shift']
-                start_minutes = shift.start_time.hour * 60 + shift.start_time.minute
-                end_minutes = shift.end_time.hour * 60 + shift.end_time.minute
-                shift_times.append({
-                    'shift_data': shift_data,
-                    'shift_id': shift.shift_id,
-                    'start_minutes': start_minutes,
-                    'end_minutes': end_minutes
-                })
-            
-            # Detect overlaps
-            for i, shift_time in enumerate(shift_times):
-                overlap_count = 0
-                position_in_group = 0
-                
-                for j, other_shift_time in enumerate(shift_times):
-                    if i != j:  # Don't compare with itself
-                        # Check if shifts overlap
-                        if (shift_time['start_minutes'] < other_shift_time['end_minutes'] and 
-                            shift_time['end_minutes'] > other_shift_time['start_minutes']):
+
+            weeks_dict[week_start]['days'][shift.date].append(
+                {
+                    'shift': shift_payload,
+                    'duration': duration,
+                    'constraint_passed': constraint_passed,
+                    'warnings': constraint_warnings,
+                }
+            )
+
+        # Calculate overlaps for each day
+        for week_data in weeks_dict.values():
+            for _, day_shifts in week_data['days'].items():
+                shift_times = []
+                for shift_data in day_shifts:
+                    shift_info = shift_data['shift']
+                    start_minutes = (
+                        shift_info['start_time'].hour * 60
+                        + shift_info['start_time'].minute
+                    )
+                    end_minutes = (
+                        shift_info['end_time'].hour * 60
+                        + shift_info['end_time'].minute
+                    )
+                    shift_times.append(
+                        {
+                            'shift_data': shift_data,
+                            'shift_id': shift_info['shift_id'],
+                            'start_minutes': start_minutes,
+                            'end_minutes': end_minutes,
+                        }
+                    )
+
+                for i, shift_time in enumerate(shift_times):
+                    overlap_count = 0
+                    position_in_group = 0
+
+                    for j, other_shift_time in enumerate(shift_times):
+                        if i == j:
+                            continue
+                        if (
+                            shift_time['start_minutes']
+                            < other_shift_time['end_minutes']
+                            and shift_time['end_minutes']
+                            > other_shift_time['start_minutes']
+                        ):
                             overlap_count += 1
-                            # Determine position: if other starts earlier, this goes to the right
-                            if other_shift_time['start_minutes'] < shift_time['start_minutes']:
+                            if (
+                                other_shift_time['start_minutes']
+                                < shift_time['start_minutes']
+                            ):
                                 position_in_group += 1
-                            elif (other_shift_time['start_minutes'] == shift_time['start_minutes'] and 
-                                  other_shift_time['shift_id'] < shift_time['shift_id']):
+                            elif (
+                                other_shift_time['start_minutes']
+                                == shift_time['start_minutes']
+                                and other_shift_time['shift_id']
+                                < shift_time['shift_id']
+                            ):
                                 position_in_group += 1
-                
-                # Add overlap info to shift_data
-                shift_times[i]['shift_data']['has_overlap'] = overlap_count > 0
-                shift_times[i]['shift_data']['overlap_position'] = position_in_group if position_in_group < 2 else 1
-    
-    # Convert to sorted list
-    all_weeks = sorted(weeks_dict.values(), key=lambda x: x['week_start'])
+
+                    shift_time['shift_data']['has_overlap'] = overlap_count > 0
+                    shift_time['shift_data']['overlap_position'] = (
+                        position_in_group if position_in_group < 2 else 1
+                    )
+
+        all_weeks_local = sorted(
+            weeks_dict.values(), key=lambda x: x['week_start']
+        )
+        return {'all_weeks': all_weeks_local}
+
+    preview_data = cache.get_or_set(
+        schedule_preview_key(term.term_id),
+        _compute_preview_data,
+        ttl_seconds=300,
+    )
+    all_weeks = preview_data.get('all_weeks', [])
     
     # Choose which week to show: default to the current calendar week when possible
     week_param = request.args.get('week', type=int)
@@ -806,10 +946,12 @@ def preview():
 
     current_week = all_weeks[week_index] if all_weeks else None
     
-    return render_template('preview.html', 
-                          current_week=current_week,
-                          all_weeks=all_weeks,
-                          week_index=week_index,
-                          term=term,
-                          policy=policy,
-                          students=students)
+    return render_template(
+        'preview.html',
+        current_week=current_week,
+        all_weeks=all_weeks,
+        week_index=week_index,
+        term=term,
+        policy=policy,
+        students=students,
+    )

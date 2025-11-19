@@ -29,3 +29,4 @@ wheel==0.45.1
 PyMySQL==1.1.2
 icalendar==6.3.2
 openai==1.55.3
+python-binary-memcached==0.31.2

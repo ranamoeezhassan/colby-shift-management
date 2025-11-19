@@ -2,6 +2,7 @@ from flask import render_template, request, redirect, url_for, flash, jsonify, s
 from flask_login import login_required, current_user
 from . import constraints_bp
 from models import db, Policy, UndesirableTimeWindow, Term, User, Shift, ShiftViolation, ShiftGap
+from cache import cache, outputs_index_key
 # Note: UndesirableShiftTracking, RejectedShift, SplitShift, PolicyAuditLog, ValidationReport 
 # are now compatibility wrappers - data stored in Policy JSON fields
 from datetime import time, date, datetime
@@ -1196,7 +1197,10 @@ def create_student_api():
         
         db.session.add(student)
         db.session.commit()
-        
+
+        # New student affects Outputs index stats; invalidate summary cache.
+        cache.delete(outputs_index_key())
+
         return {
             'success': True,
             'message': 'Student created successfully',
@@ -1240,6 +1244,10 @@ def update_student_api(student_id):
             student.is_active = data['is_active']
         
         db.session.commit()
+
+        # If activation status changed, Outputs index student count may change.
+        if 'is_active' in data:
+            cache.delete(outputs_index_key())
         
         return {
             'success': True,
@@ -1270,7 +1278,10 @@ def delete_student_api(student_id):
         # Instead of deleting, deactivate the student to preserve shift history
         student.is_active = False
         db.session.commit()
-        
+
+        # Deactivation affects student counts on Outputs index.
+        cache.delete(outputs_index_key())
+
         return {
             'success': True,
             'message': 'Student deactivated successfully'

@@ -5,6 +5,13 @@ from models import db, Term, Shift, User, Policy, StaffingNeeds, Availability, S
 from schedule_generator import ScheduleGenerator, GapAnalyzer
 from datetime import datetime, date, timedelta, time
 import uuid
+from cache import (
+    cache,
+    outputs_index_key,
+    all_students_weeks_key,
+    invalidate_term,
+    invalidate_student,
+)
 
 # GitHub Issues #38-39: Schedule Generation
 # Features: Generate initial schedule, manual adjustments, regeneration, etc.
@@ -171,6 +178,11 @@ def generate():
                     Shift.date <= end_date
                 ).delete()
                 db.session.commit()
+
+                # Shifts for this term changed; invalidate outputs caches.
+                cache.delete(outputs_index_key())
+                cache.delete(all_students_weeks_key())
+                invalidate_term(term_id)
         
         # Check if staffing needs exist
         staffing_needs = StaffingNeeds.query.filter_by(term_id=term_id).count()
@@ -477,7 +489,14 @@ def create_shift():
         
         db.session.add(new_shift)
         db.session.commit()
-        
+
+        # Invalidate outputs-related caches affected by this new shift.
+        cache.delete(outputs_index_key())
+        cache.delete(all_students_weeks_key())
+        week_start = shift_date - timedelta(days=shift_date.weekday())
+        invalidate_term(term_id)
+        invalidate_student(user_id, week_start.isoformat())
+
         # Detect violations and gaps
         ShiftViolation.detect_violations_for_shift(new_shift)
         ShiftGap.detect_gaps_for_user_date(new_shift.user_id, new_shift.date, new_shift.term_id)
@@ -513,7 +532,14 @@ def delete_shift(shift_id):
         
         db.session.delete(shift)
         db.session.commit()
-        
+
+        # Invalidate outputs-related caches affected by this deletion.
+        cache.delete(outputs_index_key())
+        cache.delete(all_students_weeks_key())
+        week_start = shift_date - timedelta(days=shift_date.weekday())
+        invalidate_term(term_id)
+        invalidate_student(user_id, week_start.isoformat())
+
         # Re-detect gaps for this user/date after deletion
         ShiftGap.detect_gaps_for_user_date(user_id, shift_date, term_id)
         
@@ -543,7 +569,12 @@ def reassign_shift(shift_id):
         shift.was_manually_adjusted = True
         
         db.session.commit()
-        
+
+        # Invalidate per-student caches for both old and new assignees.
+        week_start = shift.date - timedelta(days=shift.date.weekday())
+        invalidate_student(old_user_id, week_start.isoformat())
+        invalidate_student(new_user_id, week_start.isoformat())
+
         # Re-detect gaps for both old and new users
         ShiftGap.detect_gaps_for_user_date(old_user_id, shift.date, shift.term_id)
         ShiftGap.detect_gaps_for_user_date(new_user_id, shift.date, shift.term_id)
