@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app, send_from_directory, Response
+from flask import Blueprint, request, jsonify, current_app, send_from_directory, Response, render_template
 from blueprints.availability import availability_bp
 from flask_login import current_user, login_required
 from models import db, User, Availability, Term
@@ -12,7 +12,7 @@ import io
 @availability_bp.route('/page', methods=['GET'])
 @login_required
 def availability_page():
-    return send_from_directory(availability_bp.static_folder, 'availability_index.html')
+    return render_template('availability_index.html')
 
 
 # --------- REST API: get terms ---------
