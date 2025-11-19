@@ -9,7 +9,7 @@
 {% block header_subtitle %}Please sign in to your account{% endblock %}
 
 {% block content %}
-<form class="login-form" method="POST" action="{{ url_for('auth.shiftManagementLogin') }}">
+<form id="login-form" class="login-form">
     <div class="form-group">
         <label for="email">Email Address</label>
         <input type="email" id="email" name="email" required>
@@ -30,6 +30,42 @@
 
     <button type="submit" class="login-btn">Sign In</button>
 </form>
+
+<script>
+  const form = document.getElementById("login-form");
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const remember = document.getElementById("remember")?.checked || false;
+
+    try {
+      const response = await fetch("{{ url_for('auth.api_login') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, remember }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        alert(data.message || "Login failed.");
+        return;
+      }
+
+      window.location.href = data.redirect_url || "{{ url_for('auth.shiftManagement') }}";
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong. Please try again.");
+    }
+  });
+</script>
+
 {% endblock %}
 
-{% block footer %}Don't have an account? <a href="#">Contact your administrator</a>{% endblock %}
+{% block footer %}Don't have an account? 
+  <a href="{{ url_for('auth.shiftManagementSignUp') }}">Contact your administrator</a>
+{% endblock %}
+
