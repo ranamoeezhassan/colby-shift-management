@@ -1,0 +1,44 @@
+{% macro ai_assistant_bar() %}
+{% set ai_placeholder = 'Ask anything (e.g. “How do I create a term?”)' %}
+{% if current_user.is_authenticated and current_user.role == 'student' %}
+  {% set ai_placeholder = 'Ask anything (e.g. “How can I see my schedule for next week?”)' %}
+{% endif %}
+<div id="ai-assistant-root">
+  <button id="ai-trigger-button" class="ai-trigger-button" type="button" aria-label="Open help assistant">
+    ?
+  </button>
+
+  <div id="ai-ask-bar-backdrop" class="ai-ask-bar-backdrop" hidden></div>
+
+  <div id="ai-ask-bar" class="ai-ask-bar-container" hidden aria-hidden="true">
+    <div class="ai-ask-bar-inner">
+      <div class="ai-ask-bar-header">
+        <span class="ai-ask-bar-title">Need help navigating?</span>
+        <button id="ai-close-button" class="ai-close-button" type="button" aria-label="Close assistant">
+          ✕
+        </button>
+      </div>
+
+      <form id="ai-ask-bar-form" class="ai-ask-bar-form">
+        <input
+          id="ai-question-input"
+          name="question"
+          type="text"
+          class="ai-question-input"
+          placeholder="{{ ai_placeholder }}"
+          autocomplete="off"
+        />
+        <button type="submit" class="ai-submit-button">Ask</button>
+      </form>
+
+      <div id="ai-answer-area" class="ai-answer-area">
+        <span class="ai-answer-placeholder">Your answer will appear here.</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{{ ai_assistant_bar() }}
+
+

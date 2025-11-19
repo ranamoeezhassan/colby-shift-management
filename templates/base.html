@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Colby Shift Management{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}">
+    {% if current_user.is_authenticated %}
+    <link rel="stylesheet" href="{{ url_for('ai.static', filename='ai.css') }}">
+    {% endif %}
     {% block styles %}{% endblock %}
 </head>
 
@@ -55,6 +58,10 @@
             {% endif %}
         </div>
     </div>
+    {% if current_user.is_authenticated %}
+    {% include 'ai/ask_bar.html' %}
+    <script src="{{ url_for('ai.static', filename='ai.js') }}"></script>
+    {% endif %}
 </body>
 
 </html>

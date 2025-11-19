@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="/static/base.css">
   <!-- Availability-specific styles -->
   <link rel="stylesheet" href="availability/static/availability.css">
+  <!-- AI assistant styles -->
+  <link rel="stylesheet" href="/ai/static/ai.css">
 </head>
 <body>
   <!-- Navbar (copied from base.html with no Jinja) -->
@@ -127,5 +129,41 @@ Jane Smith,Tuesday,13:00,17:30</pre>
 
   <!-- External JS file -->
   <script src="availability/static/availability.js"></script>
+  <!-- AI assistant markup and script (standalone since this page does not use base.html) -->
+  <div id="ai-assistant-root">
+    <button id="ai-trigger-button" class="ai-trigger-button" type="button" aria-label="Open help assistant">
+      ?
+    </button>
+
+    <div id="ai-ask-bar-backdrop" class="ai-ask-bar-backdrop" hidden></div>
+
+    <div id="ai-ask-bar" class="ai-ask-bar-container" hidden aria-hidden="true">
+      <div class="ai-ask-bar-inner">
+        <div class="ai-ask-bar-header">
+          <span class="ai-ask-bar-title">Need help navigating?</span>
+          <button id="ai-close-button" class="ai-close-button" type="button" aria-label="Close assistant">
+            ✕
+          </button>
+        </div>
+
+        <form id="ai-ask-bar-form" class="ai-ask-bar-form">
+          <input
+            id="ai-question-input"
+            name="question"
+            type="text"
+            class="ai-question-input"
+            placeholder="Ask anything (e.g. “How do I create a term?”)"
+            autocomplete="off"
+          />
+          <button type="submit" class="ai-submit-button">Ask</button>
+        </form>
+
+        <div id="ai-answer-area" class="ai-answer-area">
+          <span class="ai-answer-placeholder">Your answer will appear here.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/ai/static/ai.js"></script>
 </body>
 </html>
