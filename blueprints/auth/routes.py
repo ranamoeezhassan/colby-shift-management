@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, flash, jsonify
+from flask import render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from models import db, User
 import os
@@ -160,3 +160,134 @@ def api_signup():
             "redirect_url": url_for("auth.shiftManagementLogin"),
         }
     ), 201
+@auth_bp.route("/login/google")
+def google_login():
+    """
+    Start Google OAuth login flow.
+    Only works if GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET are configured and the
+    provider has been registered in app.py.
+    """
+    oauth = current_app.extensions.get("authlib.integrations.flask_client")
+    if oauth is None:
+        flash("Google login is not configured.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    google = oauth.create_client("google")
+    if google is None:
+        flash("Google login is not available.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    redirect_uri = url_for("auth.google_authorize", _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+
+def _infer_role_from_email(email: str) -> str:
+    """
+    Infer role from email address for Google logins:
+    - If the local part (before @) contains any digit (e.g. class year like 26, 27),
+      treat as a student.
+    - Otherwise treat as a supervisor.
+    """
+    local_part = (email or "").split("@", 1)[0]
+    return "student" if any(ch.isdigit() for ch in local_part) else "supervisor"
+
+
+@auth_bp.route("/login/google/callback")
+def google_authorize():
+    """
+    Google OAuth callback: finalize login and log in or create a user whose
+    email matches the Google account email.
+
+    Role assignment rule for Google logins:
+    - Any email whose local part contains digits (e.g. 26, 27, or any number)
+      is treated as a student.
+    - Otherwise it is treated as a supervisor.
+    """
+    oauth = current_app.extensions.get("authlib.integrations.flask_client")
+    if oauth is None:
+        flash("Google login is not configured.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    google = oauth.create_client("google")
+    if google is None:
+        flash("Google login is not available.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    try:
+        # Exchange code for tokens
+        token = google.authorize_access_token()
+    except Exception:
+        current_app.logger.exception("Google OAuth authorize_access_token failed")
+        flash("Google login failed. Please try again.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    # Always use the official Google OpenID Connect userinfo endpoint.
+    # This avoids needing to parse the ID token ourselves and sidesteps
+    # library-specific nonce handling.
+    user_info = None
+    try:
+        resp = google.get("https://openidconnect.googleapis.com/v1/userinfo")
+        status = getattr(resp, "status_code", "n/a")
+        current_app.logger.info("Google userinfo response status=%s", status)
+        if resp.ok:
+            user_info = resp.json()
+        else:
+            current_app.logger.warning(
+                "Google userinfo request not ok: status=%s body=%s",
+                status,
+                getattr(resp, "text", "")[:200],
+            )
+    except Exception:
+        current_app.logger.exception("Google userinfo request failed")
+        user_info = None
+
+    if not user_info:
+        flash("Could not retrieve user information from Google.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    email = user_info.get("email")
+    if not email:
+        flash("Your Google account does not have an email address.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    # Find or create user based on email
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        # Infer role from email (digits -> student, else supervisor)
+        role = _infer_role_from_email(email)
+
+        # Best-effort name resolution from Google profile
+        name = (
+            user_info.get("name")
+            or " ".join(
+                part
+                for part in [user_info.get("given_name"), user_info.get("family_name")]
+                if part
+            )
+            or email.split("@", 1)[0]
+        )
+
+        # Generate a random password since Google is the auth source
+        random_password = os.urandom(16).hex()
+
+        user = User(
+            name=name,
+            email=email,
+            role=role,
+            is_active=True,
+        )
+        user.set_password(random_password)
+
+        db.session.add(user)
+        db.session.commit()
+
+        flash(f"Account created from your Google login as {role}.", "success")
+
+    if not user.is_active:
+        flash("Your account is inactive. Please contact an administrator.", "error")
+        return redirect(url_for("auth.shiftManagementLogin"))
+
+    login_user(user, remember=True)
+    flash("Logged in with Google.", "success")
+    return redirect(url_for("auth.shiftManagement"))

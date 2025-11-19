@@ -24,4 +24,15 @@
         </div>
     </a>
 </div>
+
+<div class="oauth-divider">
+    <span>or</span>
+</div>
+
+<a href="{{ url_for('auth.google_login') }}" class="google-btn">
+    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+         alt=""
+         class="google-icon">
+    <span>Sign in with Google</span>
+</a>
 {% endblock %}
