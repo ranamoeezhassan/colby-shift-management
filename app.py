@@ -20,9 +20,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # Database configuration - handle both local and Heroku environments
-if os.environ.get('DATABASE_URL') and os.environ.get('JAWSDB_URL'):
+if os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL'):
     # Production (Heroku with JawsDB MySQL)
-    database_url = os.environ.get('DATABASE_URL')
+    database_url = os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL')
     
     # JawsDB provides mysql:// URLs, but we need to use PyMySQL driver
     if database_url.startswith('mysql://'):
