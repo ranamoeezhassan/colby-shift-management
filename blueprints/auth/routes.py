@@ -1,6 +1,6 @@
 from flask import render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from models import db, User
+from models import db, User, Term, Shift
 import os
 import uuid
 from dotenv import load_dotenv
@@ -17,7 +17,30 @@ def shiftManagement():
         # Get violation summary for dashboard
         from models import ShiftViolation
         violation_summary = ShiftViolation.get_violation_summary()
-        return render_template('landing.html', violation_summary=violation_summary)
+
+        # Dynamic dashboard stats
+        from datetime import date, timedelta
+        today = date.today()
+        # Compute current week (Monday start)
+        weekday = today.weekday()  # Monday=0
+        week_start = today - timedelta(days=weekday)
+        week_end = week_start + timedelta(days=6)
+
+        students_count = User.query.filter_by(role='student', is_active=True).count()
+        active_terms = Term.query.filter(Term.end_date >= today).count()
+        shifts_this_week = Shift.query.filter(Shift.date >= week_start, Shift.date <= week_end).count()
+        total_shifts = Shift.query.count()
+
+        dashboard_stats = {
+            'students': students_count,
+            'active_terms': active_terms,
+            'shifts_this_week': shifts_this_week,
+            'total_shifts': total_shifts,
+            'week_start': week_start.isoformat(),
+            'week_end': week_end.isoformat()
+        }
+
+        return render_template('landing.html', violation_summary=violation_summary, dashboard_stats=dashboard_stats)
     return render_template('dashboard.html')
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
