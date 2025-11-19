@@ -19,21 +19,26 @@ app = Flask(__name__)
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# Create instance directory if it doesn't exist
-basedir = os.path.abspath(os.path.dirname(__file__))
-instance_dir = os.path.join(basedir, 'instance')
-os.makedirs(instance_dir, exist_ok=True)
+# Database configuration - handle both local and Heroku environments
+if os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL'):
+    # Production (Heroku with JawsDB MySQL)
+    database_url = os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL')
+    
+    # JawsDB provides mysql:// URLs, but we need to use PyMySQL driver
+    if database_url.startswith('mysql://'):
+        database_url = database_url.replace('mysql://', 'mysql+pymysql://', 1)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    print(f"Using MySQL database: {database_url.split('@')[1] if '@' in database_url else 'JawsDB'}")
+else:
+    # Development - use SQLite
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    instance_dir = os.path.join(basedir, 'instance')
+    os.makedirs(instance_dir, exist_ok=True)
+    db_path = os.path.join(instance_dir, 'shift_management.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    print(f"Using SQLite database: {db_path}")
 
-# Use absolute path for database
-db_path = os.path.join(instance_dir, 'shift_management.db')
-
-# Debug info to understand path differences
-print(f"Process: {'MAIN' if not os.environ.get('WERKZEUG_RUN_MAIN') else 'RELOADER'}")
-print(f"Base dir: {basedir}")
-print(f"DB path: {db_path}")
-print(f"DB exists: {os.path.exists(db_path)}")
-
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f'sqlite:///{db_path}')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize extensions
@@ -64,50 +69,47 @@ app.register_blueprint(constraints_bp)
 app.register_blueprint(scheduler_bp)
 app.register_blueprint(outputs_bp)
 
-# Global request/response instrumentation to diagnose missing debug prints & redirects
-@app.before_request
-def _debug_before_request():
-    try:
-        auth_state = 'auth' if (hasattr(request, 'method') and hasattr(login_manager._login_disabled, '__call__') == False) else 'n/a'
-    except Exception:
-        auth_state = 'n/a'
-    from flask_login import current_user
-    print(f"TRACE: BEFORE {request.method} {request.path} is_authenticated={getattr(current_user, 'is_authenticated', None)}", flush=True)
+# Only add debug instrumentation in development
+if not os.environ.get('DATABASE_URL'):  # Only in development
+    @app.before_request
+    def _debug_before_request():
+        from flask_login import current_user
+        print(f"TRACE: BEFORE {request.method} {request.path} is_authenticated={getattr(current_user, 'is_authenticated', None)}", flush=True)
 
-@app.after_request
-def _debug_after_request(resp):
-    print(f"TRACE: AFTER  {request.method} {request.path} -> {resp.status_code} redirect_to={resp.headers.get('Location')}", flush=True)
-    return resp
+    @app.after_request
+    def _debug_after_request(resp):
+        print(f"TRACE: AFTER  {request.method} {request.path} -> {resp.status_code} redirect_to={resp.headers.get('Location')}", flush=True)
+        return resp
 
-# SQLAlchemy event hooks for commit visibility
-from sqlalchemy import event
-from sqlalchemy.orm import Session
+    # SQLAlchemy event hooks for commit visibility (development only)
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
 
-@event.listens_for(Session, "after_flush")
-def _after_flush(session, ctx):
-    if session.new:
-        print("TRACE: after_flush NEW objects:", [repr(o) for o in session.new], flush=True)
-    if session.dirty:
-        print("TRACE: after_flush DIRTY objects:", [repr(o) for o in session.dirty], flush=True)
-    if session.deleted:
-        print("TRACE: after_flush DELETED objects:", [repr(o) for o in session.deleted], flush=True)
+    @event.listens_for(Session, "after_flush")
+    def _after_flush(session, ctx):
+        if session.new:
+            print("TRACE: after_flush NEW objects:", [repr(o) for o in session.new], flush=True)
 
-@event.listens_for(Session, "after_commit")
-def _after_commit(session):
-    print("TRACE: after_commit committed successfully", flush=True)
-
-@event.listens_for(Session, "after_rollback")
-def _after_rollback(session):
-    print("TRACE: after_rollback invoked", flush=True)
+    @event.listens_for(Session, "after_commit")
+    def _after_commit(session):
+        print("TRACE: after_commit committed successfully", flush=True)
 
 # Import all models so SQLAlchemy can create all tables
 from models import User, Term, StaffingNeeds, Availability, Shift, Policy, UndesirableTimeWindow
 
-# Create database tables (no reloader issues with use_reloader=False)
+# Create database tables
 with app.app_context():
-    db.create_all()
-    print("Database tables created successfully!")
+    try:
+        db.create_all()
+        print("Database tables created successfully!")
+    except Exception as e:
+        print(f"Error creating database tables: {e}")
 
 if __name__ == '__main__':
-    # Disable reloader to avoid database connection issues during development
-    app.run(debug=True, use_reloader=False)
+    port = int(os.environ.get('PORT', 5000))
+    if os.environ.get('DATABASE_URL'):
+        # Production
+        app.run(host='0.0.0.0', port=port)
+    else:
+        # Development
+        app.run(debug=True, use_reloader=False, host='0.0.0.0', port=port)
