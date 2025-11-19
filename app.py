@@ -10,11 +10,12 @@ from models import db
 
 # Import blueprint instances and auth initialization helpers (routes imported later)
 from blueprints.auth import auth_bp, init_google_oauth
-from blueprints.availability import availability_bp  
+from blueprints.availability import availability_bp
 from blueprints.staffing import staffing_bp
 from blueprints.constraints import constraints_bp
 from blueprints.scheduler import scheduler_bp
 from blueprints.outputs import outputs_bp
+from blueprints.ai import ai_bp
 
 # Load environment variables (for SECRET_KEY, DATABASE_URL, GOOGLE_CLIENT_ID, etc.)
 load_dotenv()
@@ -87,6 +88,7 @@ app.register_blueprint(staffing_bp)
 app.register_blueprint(constraints_bp)
 app.register_blueprint(scheduler_bp)
 app.register_blueprint(outputs_bp)
+app.register_blueprint(ai_bp)
 
 # Simple health check for monitoring
 @app.route('/health')
