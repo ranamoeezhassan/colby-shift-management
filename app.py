@@ -78,31 +78,6 @@ app.register_blueprint(constraints_bp)
 app.register_blueprint(scheduler_bp)
 app.register_blueprint(outputs_bp)
 
-# Only add debug instrumentation in development
-if not os.environ.get('DATABASE_URL'):  # Only in development
-    @app.before_request
-    def _debug_before_request():
-        from flask_login import current_user
-        print(f"TRACE: BEFORE {request.method} {request.path} is_authenticated={getattr(current_user, 'is_authenticated', None)}", flush=True)
-
-    @app.after_request
-    def _debug_after_request(resp):
-        print(f"TRACE: AFTER  {request.method} {request.path} -> {resp.status_code} redirect_to={resp.headers.get('Location')}", flush=True)
-        return resp
-
-    # SQLAlchemy event hooks for commit visibility (development only)
-    from sqlalchemy import event
-    from sqlalchemy.orm import Session
-
-    @event.listens_for(Session, "after_flush")
-    def _after_flush(session, ctx):
-        if session.new:
-            print("TRACE: after_flush NEW objects:", [repr(o) for o in session.new], flush=True)
-
-    @event.listens_for(Session, "after_commit")
-    def _after_commit(session):
-        print("TRACE: after_commit committed successfully", flush=True)
-
 # Import all models so SQLAlchemy can create all tables
 from models import User, Term, StaffingNeeds, Availability, Shift, Policy, UndesirableTimeWindow
 
@@ -115,10 +90,10 @@ with app.app_context():
         print(f"Error creating database tables: {e}")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
-    if os.environ.get('DATABASE_URL'):
-        # Production
+    if os.environ.get('DATABASE_URL') or os.environ.get('JAWSDB_URL'):
+        # Production - Heroku sets PORT environment variable
+        port = int(os.environ.get('PORT', 5000))
         app.run(host='0.0.0.0', port=port)
     else:
-        # Development
-        app.run(debug=True, use_reloader=False, host='0.0.0.0', port=port)
+        # Development - run on localhost:5000
+        app.run(debug=True, host='127.0.0.1', port=5000)
