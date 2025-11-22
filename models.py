@@ -785,6 +785,12 @@ class Shift(db.Model):
         duration = (end_dt - start_dt).total_seconds() / 60
         return int(duration)
     
+    @property
+    def duration_minutes(self):
+        """Length of the shift in minutes (so code can call shift.duration_minutes)."""
+        return self.get_duration_minutes()
+
+
     def validate_duration_constraints(self):
         """
         Validate this shift meets policy duration constraints (Issue #26)
