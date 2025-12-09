@@ -27,6 +27,7 @@ def app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = 'test-secret-key'
     app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF for testing
+    app.config['SERVER_NAME'] = 'localhost'  # Needed for url_for in tests
     
     # Initialize database
     db.init_app(app)
