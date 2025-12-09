@@ -1,4 +1,4 @@
-from flask import render_template, Response, abort, request, redirect, url_for
+from flask import render_template, Response, abort, request, redirect, url_for, jsonify, make_response
 from flask_login import login_required, current_user
 from models import Shift, User, Term, Policy, db
 from . import outputs_bp
@@ -156,12 +156,11 @@ def export_csv():
         ])
     
     filename = f'schedule_{term.name.replace(" ", "_")}.csv' if term else 'schedule.csv'
-    
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': f'attachment;filename={filename}'}
-    )
+
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 @outputs_bp.route('/export/ical')
 @login_required
@@ -281,12 +280,11 @@ def export_ical():
         cal.add_component(event)
     
     filename = f'schedule_{term.name.replace(" ", "_")}.ics' if term else 'schedule.ics'
-    
-    return Response(
-        cal.to_ical(),
-        mimetype='text/calendar',
-        headers={'Content-Disposition': f'attachment;filename={filename}'}
-    )
+
+    response = make_response(cal.to_ical())
+    response.headers['Content-Type'] = 'text/calendar; charset=utf-8'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 @outputs_bp.route('/calendar/<token>')
 def export_ical_student(token):
@@ -410,12 +408,11 @@ def export_ical_student(token):
     if term:
         filename += f'_{term.name.replace(" ", "_")}'
     filename += '.ics'
-    
-    return Response(
-        cal.to_ical(),
-        mimetype='text/calendar',
-        headers={'Content-Disposition': f'attachment;filename={filename}'}
-    )
+
+    response = make_response(cal.to_ical())
+    response.headers['Content-Type'] = 'text/calendar; charset=utf-8'
+    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 @outputs_bp.route('/student/<int:user_id>')
 @login_required
@@ -955,3 +952,339 @@ def preview():
         policy=policy,
         students=students,
     )
+
+
+@outputs_bp.route('/api/schedules', methods=['GET'])
+@login_required
+def api_list_schedules():
+    """List shifts with optional filters."""
+    try:
+        term_id = request.args.get('term_id', type=int)
+        user_id = request.args.get('user_id', type=int)
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if current_user.role == 'student':
+            user_id = current_user.user_id
+        
+        query = Shift.query
+        
+        if term_id:
+            query = query.filter(Shift.term_id == term_id)
+        if user_id:
+            query = query.filter(Shift.user_id == user_id)
+        if start_date:
+            query = query.filter(Shift.date >= datetime.strptime(start_date, '%Y-%m-%d').date())
+        if end_date:
+            query = query.filter(Shift.date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+        
+        shifts = query.order_by(Shift.date, Shift.start_time).all()
+        
+        term = None
+        if term_id:
+            term = Term.query.get(term_id)
+        elif shifts:
+            term = Term.query.get(shifts[0].term_id)
+        
+        data = []
+        for shift in shifts:
+            shift_start = datetime.combine(shift.date, shift.start_time)
+            shift_end = datetime.combine(shift.date, shift.end_time)
+            duration_hours = (shift_end - shift_start).seconds / 3600
+            
+            data.append({
+                'shift_id': shift.shift_id,
+                'term_id': shift.term_id,
+                'user_id': shift.user_id,
+                'user_name': shift.user.name,
+                'user_email': shift.user.email,
+                'date': shift.date.strftime('%Y-%m-%d'),
+                'day_of_week': shift.date.strftime('%A'),
+                'start_time': shift.start_time.strftime('%H:%M'),
+                'end_time': shift.end_time.strftime('%H:%M'),
+                'duration_hours': round(duration_hours, 2),
+                'was_manually_adjusted': shift.was_manually_adjusted
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'shifts': data,
+                'count': len(data),
+                'term': {
+                    'term_id': term.term_id,
+                    'name': term.name,
+                    'start_date': term.start_date.strftime('%Y-%m-%d'),
+                    'end_date': term.end_date.strftime('%Y-%m-%d')
+                } if term else None
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@outputs_bp.route('/api/schedules/preview', methods=['GET'])
+@login_required
+def api_schedule_preview():
+    """Get schedule preview data as JSON."""
+    if current_user.role.lower() != 'supervisor':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        term_id = request.args.get('term_id', type=int)
+        week_index = request.args.get('week', 0, type=int)
+        
+        if term_id:
+            term = Term.query.get(term_id)
+        else:
+            term = Term.query.order_by(Term.start_date.desc()).first()
+        
+        if not term:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'term': None,
+                    'weeks': [],
+                    'current_week': None
+                }
+            }), 200
+        
+        policy = Policy.query.filter_by(term_id=term.term_id).first()
+        
+        from datetime import timedelta
+        
+        shifts = Shift.query.filter_by(term_id=term.term_id).order_by(
+            Shift.date, Shift.start_time
+        ).all()
+        
+        weeks_dict = {}
+        
+        for shift in shifts:
+            week_start = shift.date - timedelta(days=shift.date.weekday())
+            
+            if week_start not in weeks_dict:
+                weeks_dict[week_start] = {
+                    'week_start': week_start.strftime('%Y-%m-%d'),
+                    'week_end': (week_start + timedelta(days=6)).strftime('%Y-%m-%d'),
+                    'shifts': []
+                }
+            
+            shift_start_dt = datetime.combine(date.today(), shift.start_time)
+            shift_end_dt = datetime.combine(date.today(), shift.end_time)
+            duration_minutes = (shift_end_dt - shift_start_dt).seconds / 60
+            duration_hours = duration_minutes / 60
+            
+            constraint_passed = True
+            warnings = []
+            
+            if policy:
+                if duration_minutes < policy.min_shift_length:
+                    constraint_passed = False
+                    warnings.append('Too short')
+                if duration_minutes > policy.max_shift_length:
+                    constraint_passed = False
+                    warnings.append('Too long')
+                start_time_int = shift.start_time.hour * 100 + shift.start_time.minute
+                end_time_int = shift.end_time.hour * 100 + shift.end_time.minute
+                if start_time_int < policy.undesireable_start:
+                    warnings.append('Early start')
+                if end_time_int > policy.undesireable_end:
+                    warnings.append('Late end')
+            
+            weeks_dict[week_start]['shifts'].append({
+                'shift_id': shift.shift_id,
+                'user_id': shift.user_id,
+                'user_name': shift.user.name,
+                'date': shift.date.strftime('%Y-%m-%d'),
+                'day_of_week': shift.date.strftime('%A'),
+                'start_time': shift.start_time.strftime('%H:%M'),
+                'end_time': shift.end_time.strftime('%H:%M'),
+                'duration_hours': round(duration_hours, 2),
+                'constraint_passed': constraint_passed,
+                'warnings': warnings,
+                'was_manually_adjusted': shift.was_manually_adjusted
+            })
+        
+        all_weeks = sorted(weeks_dict.values(), key=lambda x: x['week_start'])
+        week_index = max(0, min(week_index, len(all_weeks) - 1)) if all_weeks else 0
+        current_week = all_weeks[week_index] if all_weeks else None
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'term': {
+                    'term_id': term.term_id,
+                    'name': term.name,
+                    'start_date': term.start_date.strftime('%Y-%m-%d'),
+                    'end_date': term.end_date.strftime('%Y-%m-%d')
+                },
+                'policy': {
+                    'min_shift_length': policy.min_shift_length,
+                    'max_shift_length': policy.max_shift_length,
+                    'undesireable_start': policy.undesireable_start,
+                    'undesireable_end': policy.undesireable_end
+                } if policy else None,
+                'weeks': all_weeks,
+                'week_count': len(all_weeks),
+                'current_week_index': week_index,
+                'current_week': current_week
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@outputs_bp.route('/api/students', methods=['GET'])
+@login_required
+def api_list_students():
+    """List students with shift counts."""
+    if current_user.role.lower() != 'supervisor':
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        search = request.args.get('search', '').strip()
+        term_id = request.args.get('term_id', type=int)
+        
+        query = User.query.filter_by(role='student')
+        
+        if search:
+            query = query.filter(
+                (User.name.ilike(f'%{search}%')) | 
+                (User.email.ilike(f'%{search}%'))
+            )
+        
+        students = query.order_by(User.name).all()
+        
+        data = []
+        for student in students:
+            shift_query = Shift.query.filter_by(user_id=student.user_id)
+            if term_id:
+                shift_query = shift_query.filter_by(term_id=term_id)
+            
+            shifts = shift_query.all()
+            
+            total_hours = 0.0
+            for shift in shifts:
+                shift_start = datetime.combine(shift.date, shift.start_time)
+                shift_end = datetime.combine(shift.date, shift.end_time)
+                total_hours += (shift_end - shift_start).seconds / 3600
+            
+            data.append({
+                'user_id': student.user_id,
+                'name': student.name,
+                'email': student.email,
+                'is_active': student.is_active,
+                'shift_count': len(shifts),
+                'total_hours': round(total_hours, 2)
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'students': data,
+                'count': len(data)
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@outputs_bp.route('/api/students/<int:user_id>/schedule', methods=['GET'])
+@login_required
+def api_student_schedule(user_id):
+    """Get student's shifts and weekly stats."""
+    if current_user.role == 'student' and current_user.user_id != user_id:
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        student = User.query.get(user_id)
+        if not student:
+            return jsonify({'success': False, 'error': 'Student not found'}), 404
+        if student.role != 'student':
+            return jsonify({'success': False, 'error': 'User is not a student'}), 400
+        
+        term_id = request.args.get('term_id', type=int)
+        week_index = request.args.get('week', type=int)
+        
+        shift_query = Shift.query.filter_by(user_id=user_id)
+        if term_id:
+            shift_query = shift_query.filter_by(term_id=term_id)
+        
+        shifts = shift_query.order_by(Shift.date, Shift.start_time).all()
+        
+        from datetime import timedelta
+        weeks_dict = {}
+        
+        for shift in shifts:
+            week_start = shift.date - timedelta(days=shift.date.weekday())
+            
+            if week_start not in weeks_dict:
+                weeks_dict[week_start] = {
+                    'week_start': week_start.strftime('%Y-%m-%d'),
+                    'week_end': (week_start + timedelta(days=6)).strftime('%Y-%m-%d'),
+                    'shifts': [],
+                    'total_hours': 0.0,
+                    'shift_count': 0
+                }
+            
+            shift_start = datetime.combine(shift.date, shift.start_time)
+            shift_end = datetime.combine(shift.date, shift.end_time)
+            duration_hours = (shift_end - shift_start).seconds / 3600
+            
+            weeks_dict[week_start]['shifts'].append({
+                'shift_id': shift.shift_id,
+                'date': shift.date.strftime('%Y-%m-%d'),
+                'day_of_week': shift.date.strftime('%A'),
+                'start_time': shift.start_time.strftime('%H:%M'),
+                'end_time': shift.end_time.strftime('%H:%M'),
+                'duration_hours': round(duration_hours, 2)
+            })
+            weeks_dict[week_start]['total_hours'] += duration_hours
+            weeks_dict[week_start]['shift_count'] += 1
+        
+        for week in weeks_dict.values():
+            week['total_hours'] = round(week['total_hours'], 2)
+        
+        all_weeks = sorted(weeks_dict.values(), key=lambda x: x['week_start'])
+        
+        if week_index is not None:
+            week_index = max(0, min(week_index, len(all_weeks) - 1)) if all_weeks else 0
+        else:
+            today = date.today()
+            week_index = 0
+            for idx, week in enumerate(all_weeks):
+                week_start = datetime.strptime(week['week_start'], '%Y-%m-%d').date()
+                week_end = datetime.strptime(week['week_end'], '%Y-%m-%d').date()
+                if week_start <= today <= week_end:
+                    week_index = idx
+                    break
+        
+        current_week = all_weeks[week_index] if all_weeks else None
+        
+        total_shifts = len(shifts)
+        total_hours = sum(week['total_hours'] for week in all_weeks)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'student': {
+                    'user_id': student.user_id,
+                    'name': student.name,
+                    'email': student.email
+                },
+                'summary': {
+                    'total_shifts': total_shifts,
+                    'total_hours': round(total_hours, 2),
+                    'week_count': len(all_weeks)
+                },
+                'weeks': all_weeks,
+                'current_week_index': week_index,
+                'current_week': current_week
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

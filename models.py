@@ -771,6 +771,10 @@ class Shift(db.Model):
     def __repr__(self):
         return f'<Shift {self.shift_id} for User {self.user_id} on {self.date}>'
     
+    @property
+    def duration_minutes(self):
+        return self.get_duration_minutes()
+    
     def get_duration_minutes(self):
         """Get the duration of this shift in minutes"""
         from datetime import datetime, timedelta

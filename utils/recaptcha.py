@@ -1,25 +1,26 @@
+import os
 import requests
 from flask import current_app
 
 def verify_recaptcha(response_token):
     """
-    Verify reCAPTCHA response with Google's API
-    
-    Args:
-        response_token (str): The reCAPTCHA response token from the client
-        
-    Returns:
-        bool: True if verification successful, False otherwise
+    Verify reCAPTCHA response with Google's API.
+
+    In local development / testing we want to be able to disable
+    reCAPTCHA entirely so that missing tokens don't block login.
     """
-    if not response_token:
-        return False
-    
-    # Get secret key from config
+    if current_app.debug or current_app.config.get('TESTING') or \
+       os.environ.get('DISABLE_RECAPTCHA', '').lower() in {'1', 'true', 'yes'}:
+        print("Debug: reCAPTCHA disabled (development/testing) - skipping verification")
+        return True
+
     secret_key = current_app.config.get('RECAPTCHA_SECRET_KEY')
     if not secret_key:
-        # If no secret key configured, require reCAPTCHA completion but allow for development
         print("Warning: No RECAPTCHA_SECRET_KEY configured - skipping verification")
         return True
+
+    if not response_token:
+        return False
     
     print(f"Debug: Verifying reCAPTCHA with response: {response_token[:20]}..." if response_token else "Debug: No reCAPTCHA response provided")
     
