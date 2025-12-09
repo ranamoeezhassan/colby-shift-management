@@ -167,42 +167,6 @@ def api_login():
     ), 200
 
 
-@auth_bp.route("/signup", methods=["GET", "POST"])
-def signup():
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "").strip()
-        role = request.form.get("role", "").strip()
-
-        if not all([name, email, password, role]):
-            flash("All fields are required.", "error")
-            return render_template("signup.html")
-
-        if role not in ["student", "supervisor"]:
-            flash("Invalid role selected.", "error")
-            return render_template("signup.html")
-
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            flash("Email already registered. Please try logging in.", "error")
-            return render_template("signup.html")
-
-        # Create user
-        user = User(name=name, email=email, role=role)
-        user.set_password(password)
-        user.is_active = True  # Activate immediately for now
-        user.calendar_token = str(uuid.uuid4())
-
-        db.session.add(user)
-        db.session.commit()
-
-        flash("Account created successfully! Please log in.", "success")
-        return redirect(url_for("auth.shiftManagementLogin"))
-
-    return render_template("signup.html")
-
-
 # Google OAuth Routes
 @auth_bp.route("/google/login")
 def google_login():
