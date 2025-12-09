@@ -91,8 +91,9 @@ def app():
 
 @pytest.fixture
 def client(app):
-    """Create a test client"""
-    return app.test_client()
+    """Create a test client with app context"""
+    with app.app_context():
+        yield app.test_client()
 
 @pytest.fixture
 def runner(app):
