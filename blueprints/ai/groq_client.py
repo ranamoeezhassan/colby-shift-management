@@ -5,10 +5,13 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
-
 
 logger = logging.getLogger(__name__)
+
+try:
+    load_dotenv()
+except PermissionError:
+    logger.warning("AI assistant: unable to read .env; continuing without it.")
 
 # Groq API configuration
 GROQ_API_BASE_URL = os.getenv("GROQ_API_BASE_URL", "https://api.groq.com/openai/v1")
