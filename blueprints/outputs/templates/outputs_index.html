@@ -73,7 +73,7 @@
         
         {# Row 2: Export CSV + Export iCal #}
         <div class="dashboard-row">
-               <a href="{{ url_for('outputs.export_csv') }}" class="dashboard-btn">
+               <a href="{{ url_for('outputs.export_csv') }}" class="dashboard-btn" download>
                    <div class="btn-content">
                        <h3>📄 Export CSV</h3>
                        <p>Download schedule as CSV file</p>
@@ -81,7 +81,7 @@
                </a>
             
             {% if icalendar_available %}
-            <a href="{{ url_for('outputs.export_ical') }}" class="dashboard-btn">
+            <a href="{{ url_for('outputs.export_ical') }}" class="dashboard-btn" download>
                 <div class="btn-content">
                     <h3>📆 Export iCal (Combined)</h3>
                     <p>Download all shifts as single .ics calendar file</p>
