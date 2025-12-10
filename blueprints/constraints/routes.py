@@ -69,7 +69,7 @@ def get_policies_api():
             policy_dict = {
                 'policy_id': policy.policy_id,
                 'term_id': policy.term_id,
-                'term_name': policy.term.term_name if policy.term else 'Unknown',
+                'term_name': policy.term.name if policy.term else 'Unknown',
                 'min_shift_length': policy.min_shift_length,
                 'max_shift_length': policy.max_shift_length,
                 'min_break_length': policy.min_break_length,
