@@ -3021,7 +3021,7 @@ class TestConstraintsRoutes:
         from unittest.mock import patch, MagicMock
         
         # Target lines 983-984: Exception handling in policies API  
-        with patch('models.Policy') as mock_policy:
+        with patch('blueprints.constraints.routes.Policy') as mock_policy:
             mock_policy.query.all.side_effect = Exception("Database error in policies query")
             
             response = authenticated_client.get('/constraints/api/policies')
@@ -3452,7 +3452,7 @@ class TestConstraintsRoutes:
             assert response.status_code in [200, 400, 403, 404, 405, 500]
         
         # Target lines 983-984: Exception handling in policies endpoint
-        with patch('models.Policy') as mock_policy:
+        with patch('blueprints.constraints.routes.Policy') as mock_policy:
             mock_policy.query.all.side_effect = Exception("Database connection error")
             
             response = authenticated_client.get('/constraints/api/policies')
