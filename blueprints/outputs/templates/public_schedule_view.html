@@ -212,7 +212,7 @@
                                     {% if shift.was_manually_adjusted %}<span class="manual-badge">✏️</span>{% endif %}
                                 </div>
                                 <div class="shift-time-range">
-                                    {{ shift.start_time.strftime('%-I:%M') }}{% if shift.start_time.hour < 12 %}am{% else %}pm{% endif %} - {{ shift.end_time.strftime('%-I:%M') }}{% if shift.end_time.hour < 12 %}am{% else %}pm{% endif %}
+                                    {{ shift.start_time.strftime('%I:%M').lstrip('0') }}{% if shift.start_time.hour < 12 %}am{% else %}pm{% endif %} - {{ shift.end_time.strftime('%I:%M').lstrip('0') }}{% if shift.end_time.hour < 12 %}am{% else %}pm{% endif %}
                                 </div>
                             </div>
                         </div>
