@@ -40,7 +40,7 @@ def get_availability():
     if not term_id:
         return jsonify({"error": "term_id is required"}), 400
 
-    term = Term.query.get(term_id)
+    term = db.session.get(Term, term_id)
     if not term:
         return jsonify({"error": "Term not found"}), 404
 
@@ -84,7 +84,7 @@ def update_availability():
     if not term_id:
         return jsonify({"error": "term_id is required"}), 400
 
-    term = Term.query.get(term_id)
+    term = db.session.get(Term, term_id)
     if not term:
         return jsonify({"error": "Term not found"}), 404
 
@@ -177,7 +177,7 @@ def upload_availability_csv():
     if not term_id:
         return jsonify({"error": "term_id is required"}), 400
 
-    term = Term.query.get(term_id)
+    term = db.session.get(Term, term_id)
     if not term:
         return jsonify({"error": "Term not found"}), 404
 
@@ -301,7 +301,7 @@ def export_availability_csv():
     if not term_id:
         return jsonify({"error": "term_id is required"}), 400
 
-    term = Term.query.get(term_id)
+    term = db.session.get(Term, term_id)
     if not term:
         return jsonify({"error": "Term not found"}), 404
 
@@ -386,7 +386,7 @@ def clear_all_availability():
     if not term_id:
         return jsonify({"error": "term_id is required"}), 400
 
-    term = Term.query.get(term_id)
+    term = db.session.get(Term, term_id)
     if not term:
         return jsonify({"error": "Term not found"}), 404
 
