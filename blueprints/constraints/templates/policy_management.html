@@ -337,7 +337,7 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="undesireable_end">Undesirable End Time</label>
+                    <label for="undesireable_end">End Shifts After</label>
                     <input type="time" id="undesireable_end" name="undesireable_end" 
                            class="form-control" value="22:00">
                 </div>
@@ -445,7 +445,7 @@ async function loadPolicies() {
         document.getElementById('policies-empty').style.display = 'none';
         document.getElementById('policies-table-container').style.display = 'none';
         
-        const response = await fetch('{{ url_for("constraints.list_policies_api") }}');
+        const response = await fetch('{{ url_for("constraints.get_policies_api") }}');
         const result = await response.json();
         
         document.getElementById('policies-loading').style.display = 'none';
@@ -623,7 +623,7 @@ async function deletePolicy(policyId) {
     }
     
     try {
-        const url = `{{ url_for("constraints.remove_policy_api", policy_id=0) }}`.replace('0', policyId);
+        const url = `{{ url_for("constraints.delete_policy_api", policy_id=0) }}`.replace('0', policyId);
         
         const response = await fetch(url, {
             method: 'DELETE'

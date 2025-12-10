@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, make_response
+from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, make_response, abort
 from flask_login import login_required, current_user
 from . import constraints_bp
 from models import db, Policy, UndesirableTimeWindow, Term, User, Shift, ShiftViolation, ShiftGap
@@ -7,6 +7,7 @@ from cache import cache, outputs_index_key
 # are now compatibility wrappers - data stored in Policy JSON fields
 from datetime import time, date, datetime
 from schedule_generator import ScheduleGenerator
+from utils.pdf_generator import generate_validation_pdf
 
 # GitHub Issues #21-37: Constraints & Equity
 # Features: Shift duration, gaps, policy management, etc.
@@ -96,7 +97,7 @@ def delete_policy_api(policy_id):
     from models import PolicyAuditLog
     
     try:
-        policy = Policy.query.get(policy_id)
+        policy = db.session.get(Policy, policy_id)
         if not policy:
             return jsonify({'success': False, 'error': 'Policy not found'}), 404
         
@@ -146,7 +147,7 @@ def get_volunteer_preferences_api():
         for policy in policies:
             if policy.volunteer_preferences:
                 for pref in policy.volunteer_preferences.get('preferences', []):
-                    user = User.query.get(pref.get('user_id'))
+                    user = db.session.get(User, pref.get('user_id'))
                     preferences_data.append({
                         'preference_id': pref.get('preference_id'),
                         'user_id': pref.get('user_id'),
@@ -245,7 +246,52 @@ def delete_volunteer_preference_api(preference_id):
 # REST API endpoints for Gap Management
 @constraints_bp.route('/api/policies/by-term/<int:term_id>', methods=['PUT'])
 @login_required
-def update_policy_by_term_api(term_id):
+def update_policy_by_term(term_id):
+    """Update policy for a specific term."""
+    if current_user.role == 'student':
+        return {'success': False, 'error': 'Access denied'}, 403
+    
+    try:
+        policy = Policy.query.filter_by(term_id=term_id).first()
+        if not policy:
+            return {'success': False, 'error': 'Policy not found'}, 404
+        
+        data = request.get_json()
+        
+        # Update policy fields
+        if 'min_shift_length' in data:
+            policy.min_shift_length = data['min_shift_length']
+        if 'max_shift_length' in data:
+            policy.max_shift_length = data['max_shift_length']
+        if 'min_break_length' in data:
+            policy.min_break_length = data['min_break_length']
+        if 'max_break_length' in data:
+            policy.max_break_length = data['max_break_length']
+        if 'undesireable_start' in data:
+            policy.undesireable_start = data['undesireable_start']
+        if 'undesireable_end' in data:
+            policy.undesireable_end = data['undesireable_end']
+        
+        policy.updated_by = current_user.user_id
+        db.session.commit()
+        
+        return {
+            'success': True,
+            'message': 'Policy updated successfully',
+            'policy': {
+                'policy_id': policy.policy_id,
+                'term_id': policy.term_id,
+                'min_shift_length': policy.min_shift_length,
+                'max_shift_length': policy.max_shift_length
+            }
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {'success': False, 'error': str(e)}, 500
+
+@constraints_bp.route('/api/terms/<int:term_id>/policy', methods=['PUT'])
+@login_required
+def update_term_policy_api(term_id):
     """Update policy settings by term ID"""
     try:
         data = request.get_json()
@@ -346,7 +392,7 @@ def create_shift_validation():
                 'min_duration': policy.min_shift_length,
                 'max_duration': policy.max_shift_length
             }
-        
+        print(f"DEBUG: response_data={response_data}")
         return jsonify(response_data)
         
     except Exception as e:
@@ -357,7 +403,14 @@ def create_shift_validation():
 
 @constraints_bp.route('/shift-constraints/<int:term_id>')
 @login_required
-def get_shift_constraints(term_id):
+def shift_constraints(term_id):
+    """Get shift constraints for a specific term (legacy endpoint for compatibility)."""
+    # Redirect to the new REST endpoint
+    return redirect(url_for('constraints.get_term_constraints_api', term_id=term_id))
+
+@constraints_bp.route('/api/terms/<int:term_id>/constraints', methods=['GET'])
+@login_required
+def get_term_constraints_api(term_id):
     """Get shift duration constraints for a specific term (Issue #26)"""
     policy = Policy.get_policy_for_term(term_id)
     
@@ -403,7 +456,7 @@ def validate_policy_data(data):
     
     # Required fields
     required_fields = ['term_id', 'min_shift_length', 'max_shift_length', 
-                      'min_break_length', 'undesirable_start', 'undesirable_end']
+                      'min_break_length', 'undesireable_start', 'undesireable_end']
     
     for field in required_fields:
         if field not in data or data[field] is None:
@@ -413,8 +466,8 @@ def validate_policy_data(data):
         return {'valid': False, 'error': '; '.join(errors)}
     
     # Validate shift lengths
-    min_shift = data['min_shift_length']
-    max_shift = data['max_shift_length']
+    min_shift = int(data['min_shift_length'])
+    max_shift = int(data['max_shift_length'])
     
     if min_shift < 30:
         errors.append('Minimum shift length cannot be less than 30 minutes')
@@ -425,12 +478,13 @@ def validate_policy_data(data):
     if max_shift > 480:
         errors.append('Maximum shift length cannot exceed 8 hours (480 minutes)')
     if min_shift >= max_shift:
+        print("DEBUG: validate_policy_data check")
         errors.append('Minimum shift length must be less than maximum shift length')
     
     # Validate break lengths
-    min_break = data['min_break_length']
+    min_break = int(data['min_break_length'])
     if 'max_break_length' in data:
-        max_break = data['max_break_length']
+        max_break = int(data['max_break_length'])
         if min_break < 0:
             errors.append('Minimum break length cannot be negative')
         if max_break < min_break:
@@ -439,12 +493,12 @@ def validate_policy_data(data):
             errors.append('Maximum break length cannot exceed 24 hours (1440 minutes)')
     
     # Validate undesirable times
-    undesirable_start = data['undesirable_start']
-    undesirable_end = data['undesirable_end']
+    undesireable_start = int(data['undesireable_start'])
+    undesireable_end = int(data['undesireable_end'])
     
-    if undesirable_start < 0 or undesirable_start > 2359:
+    if undesireable_start < 0 or undesireable_start > 2359:
         errors.append('Undesirable start time must be between 0000 and 2359')
-    if undesirable_end < 0 or undesirable_end > 2359:
+    if undesireable_end < 0 or undesireable_end > 2359:
         errors.append('Undesirable end time must be between 0000 and 2359')
     
     if errors:
@@ -520,7 +574,7 @@ def constraints_setup():
             if policy.volunteer_preferences:
                 for pref in policy.volunteer_preferences.get('preferences', []):
                     if pref.get('preference_type') in volunteer_preferences and pref.get('is_volunteer'):
-                        user = User.query.get(pref.get('user_id'))
+                        user = db.session.get(User, pref.get('user_id'))
                         if user:
                             volunteer_preferences[pref.get('preference_type')].append({
                                 'user_id': pref.get('user_id'),
@@ -644,7 +698,9 @@ def get_current_constraints():
             'volunteer_count': volunteer_count
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"DEBUG: Exception caught in get_current_constraints: {e}")
+        response = jsonify({'success': False, 'error': str(e)})
+        return response, 500
 
 @constraints_bp.route('/api/validations/bulk', methods=['POST'])
 @login_required
@@ -681,6 +737,74 @@ def create_bulk_validation():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@constraints_bp.route('/validation-reports/generate', methods=['POST'])
+@login_required
+def generate_validation_report():
+    """Generate a new validation report"""
+    try:
+        # Reuse the logic from create_bulk_validation but format for this endpoint
+        from models import Policy
+        
+        violations_found = 0
+        validation_results = []
+        
+        # Validate all policies
+        policies = Policy.query.all()
+        for policy in policies:
+            # Basic validation checks
+            if policy.min_shift_length >= policy.max_shift_length:
+                violations_found += 1
+                validation_results.append(f"Policy {policy.policy_id}: Min shift length >= Max shift length")
+            
+            if policy.min_shift_length < 30:  # Less than 30 minutes
+                violations_found += 1
+                validation_results.append(f"Policy {policy.policy_id}: Min shift length too short")
+            
+            if policy.max_shift_length > 480:  # More than 8 hours
+                violations_found += 1
+                validation_results.append(f"Policy {policy.policy_id}: Max shift length too long")
+        
+        # Generate PDF
+        pdf_buffer = generate_validation_pdf(validation_results, violations_found)
+        
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=f'validation_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf',
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@constraints_bp.route('/detect-violations/<int:term_id>', methods=['POST'])
+@login_required
+def detect_violations(term_id):
+    """Detect violations for a specific term"""
+    try:
+        # For now, perform the same policy checks
+        # In a real implementation, this would check schedule assignments against policies for the term
+        from models import Policy
+        
+        violations_found = 0
+        
+        # Validate all policies
+        policies = Policy.query.all()
+        for policy in policies:
+            if policy.min_shift_length >= policy.max_shift_length:
+                violations_found += 1
+            if policy.min_shift_length < 30:
+                violations_found += 1
+            if policy.max_shift_length > 480:
+                violations_found += 1
+        
+        return jsonify({
+            'success': True,
+            'violations_detected': violations_found,
+            'message': f'Detection complete! Found {violations_found} violations.'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @constraints_bp.route('/api/configurations', methods=['PUT'])
 @login_required
@@ -763,10 +887,6 @@ def update_constraints_configuration():
             'late_volunteers': data.get('late_volunteers', []),
             'weekend_volunteers': data.get('weekend_volunteers', [])
         }
-        
-        # Initialize or get existing volunteer preferences in policy
-        if not policy.volunteer_preferences:
-            policy.volunteer_preferences = {'preferences': []}
         
         # Clear existing preferences for this policy and add new ones
         existing_preferences = policy.volunteer_preferences.get('preferences', [])
@@ -950,40 +1070,40 @@ def create_constrained_schedule():
 
 # Policy Management API Routes
 
-@constraints_bp.route('/api/policies/list')
-@login_required
-def list_policies_api():
-    """List all policies with details"""
-    try:
-        from models import Policy, Term
-        
-        policies = db.session.query(Policy, Term).join(Term, Policy.term_id == Term.term_id, isouter=True).all()
-        
-        policies_data = []
-        for policy, term in policies:
-            policies_data.append({
-                'policy_id': policy.policy_id,
-                'term_name': term.name if term else f'Term {policy.term_id}',
-                'term_id': policy.term_id,
-                'min_shift_length': policy.min_shift_length,
-                'max_shift_length': policy.max_shift_length,
-                'min_break_length': policy.min_break_length,
-                'max_break_length': policy.max_break_length,
-                'undesireable_start': policy.undesireable_start,
-                'undesireable_end': policy.undesireable_end,
-                'updated_by': policy.updated_by,
-                'created_at': 'N/A',  # Policy model doesn't have created_at
-                'updated_at': 'Recently'  # Policy model doesn't have updated_at
-            })
-        
-        return jsonify({
-            'success': True,
-            'policies': policies_data
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+# This endpoint is redundant - use GET /api/policies instead
+# @constraints_bp.route('/api/policies/list')
+# def list_policies_api():
+#     """List all policies with details"""
+#     try:
+#         from models import Policy, Term
+#         
+#         policies = db.session.query(Policy, Term).join(Term, Policy.term_id == Term.term_id, isouter=True).all()
+#         
+#         policies_data = []
+#         for policy, term in policies:
+#             policies_data.append({
+#                 'policy_id': policy.policy_id,
+#                 'term_name': term.name if term else f'Term {policy.term_id}',
+#                 'term_id': policy.term_id,
+#                 'min_shift_length': policy.min_shift_length,
+#                 'max_shift_length': policy.max_shift_length,
+#                 'min_break_length': policy.min_break_length,
+#                 'max_break_length': policy.max_break_length,
+#                 'undesireable_start': policy.undesireable_start,
+#                 'undesireable_end': policy.undesireable_end,
+#                 'updated_by': policy.updated_by,
+#                 'created_at': 'N/A',  # Policy model doesn't have created_at
+#                 'updated_at': 'Recently'  # Policy model doesn't have updated_at
+#             })
+#         
+#         return jsonify({
+#             'success': True,
+#             'policies': policies_data
+#         })
+#     except Exception as e:
+#         return jsonify({'success': False, 'error': str(e)})
 
-@constraints_bp.route('/api/policies/create', methods=['POST'])
+@constraints_bp.route('/api/policies', methods=['POST'])
 @login_required
 def create_policy_api():
     """Create a new policy via API"""
@@ -995,6 +1115,11 @@ def create_policy_api():
         for field in required_fields:
             if field not in data:
                 return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+        
+        # Validate policy data
+        validation_result = validate_policy_data(data)
+        if not validation_result['valid']:
+            return jsonify({'success': False, 'error': validation_result['error']}), 400
         
         # Check if policy already exists for this term - if so, update it instead
         existing_policy = Policy.query.filter_by(term_id=data['term_id']).first()
@@ -1041,12 +1166,14 @@ def create_policy_api():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@constraints_bp.route('/api/policies/<int:policy_id>/update', methods=['PUT'])
+@constraints_bp.route('/api/policies/<int:policy_id>', methods=['PUT'])
 @login_required
 def update_policy_api(policy_id):
     """Update an existing policy via API"""
     try:
-        policy = Policy.query.get_or_404(policy_id)
+        policy = db.session.get(Policy, policy_id)
+        if not policy:
+            abort(404)
         data = get_request_data()
         
         # Update fields if provided
@@ -1063,6 +1190,22 @@ def update_policy_api(policy_id):
         if 'undesireable_end' in data:
             policy.undesireable_end = int(data['undesireable_end'])
         
+        # Validate the updated policy state
+        validation_data = {
+            'term_id': policy.term_id,
+            'min_shift_length': policy.min_shift_length,
+            'max_shift_length': policy.max_shift_length,
+            'min_break_length': policy.min_break_length,
+            'max_break_length': policy.max_break_length,
+            'undesireable_start': policy.undesireable_start,
+            'undesireable_end': policy.undesireable_end
+        }
+        
+        validation_result = validate_policy_data(validation_data)
+        if not validation_result['valid']:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': validation_result['error']}), 400
+
         policy.updated_by = current_user.user_id
         db.session.commit()
         
@@ -1075,24 +1218,20 @@ def update_policy_api(policy_id):
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@constraints_bp.route('/api/policies/<int:policy_id>/remove', methods=['DELETE'])
-@login_required
-def remove_policy_api(policy_id):
-    """Delete a policy via API"""
-    try:
-        policy = Policy.query.get_or_404(policy_id)
-        
-        db.session.delete(policy)
-        db.session.commit()
-        
-        return '', 204
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 # Policy Management Interface
+
+@constraints_bp.route('/policies')
+@login_required
+def policies():
+    """Render policy management page."""
+    return render_template('policy_management.html')
+
+@constraints_bp.route('/validation-reports')
+@login_required
+def validation_reports():
+    """Validation reports dashboard"""
+    # Redirect to validation dashboard for now
+    return redirect(url_for('constraints.validation_dashboard'))
 
 @constraints_bp.route('/policies')
 @login_required
@@ -1223,7 +1362,7 @@ def update_student_api(student_id):
         return {'success': False, 'error': 'Access denied'}, 403
     
     try:
-        student = User.query.get(student_id)
+        student = db.session.get(User, student_id)
         if not student or student.role != 'student':
             return {'success': False, 'error': 'Student not found'}, 404
         
@@ -1271,7 +1410,7 @@ def delete_student_api(student_id):
         return {'success': False, 'error': 'Access denied'}, 403
     
     try:
-        student = User.query.get(student_id)
+        student = db.session.get(User, student_id)
         if not student or student.role != 'student':
             return {'success': False, 'error': 'Student not found'}, 404
         

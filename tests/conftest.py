@@ -39,7 +39,7 @@ def app():
     
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
     
     # Register blueprints for route testing
     from blueprints.constraints import constraints_bp
@@ -67,6 +67,9 @@ def app():
 
     @availability_bp.route('/')
     def index(): return "Availability Index"
+
+    @availability_bp.route('/page')
+    def availability_page(): return "Availability Page"
 
     @staffing_bp.route('/')
     def index(): return "Staffing Index"

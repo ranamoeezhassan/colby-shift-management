@@ -162,6 +162,108 @@
     padding: 20px;
     color: #666;
 }
+
+/* Time Picker Styles */
+.time-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.time-input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.time-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+}
+
+.time-picker {
+    padding: 0.6rem;
+    border: 2px solid #e1e5e9;
+    border-radius: 6px;
+    font-size: 1rem;
+    background: white;
+    transition: all 0.3s ease;
+    min-width: 120px;
+}
+
+.time-picker:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    background: #fafbff;
+}
+
+.time-separator {
+    font-weight: 600;
+    color: #666;
+    padding: 0 0.5rem;
+    margin-top: 1.5rem;
+}
+
+/* Message styles */
+.message {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    font-weight: 500;
+    display: none;
+    animation: slideIn 0.3s ease-out;
+}
+
+.message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive time picker */
+@media (max-width: 768px) {
+    .time-range-inputs {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    
+    .time-separator {
+        text-align: center;
+        margin: 0.5rem 0;
+    }
+    
+    .time-picker {
+        width: 100%;
+    }
+}
 </style>
 {% endblock %}
 
@@ -178,6 +280,10 @@
 
 <div class="volunteer-form">
     <h2>Add Volunteer Preference</h2>
+    
+    <!-- Message container for success/error feedback -->
+    <div id="messageContainer" class="message"></div>
+    
     <form id="volunteerForm">
         <div class="form-section">
             <div class="form-row">
@@ -201,9 +307,20 @@
                     <div class="help-text">What type of undesirable shifts can this student work?</div>
                 </div>
                 <div class="form-group">
-                    <label for="preference_value">Preference Value</label>
-                    <input type="text" id="preference_value" name="preference_value" placeholder="e.g., 6AM-8AM, 10PM-12AM" required>
-                    <div class="help-text">Specific time ranges or values</div>
+                    <label for="preference_value">Preference Time Range</label>
+                    <div class="time-range-inputs">
+                        <div class="time-input-group">
+                            <label for="preference_start_time" class="time-label">Start Time:</label>
+                            <input type="time" id="preference_start_time" name="preference_start_time" class="time-picker">
+                        </div>
+                        <div class="time-separator">to</div>
+                        <div class="time-input-group">
+                            <label for="preference_end_time" class="time-label">End Time:</label>
+                            <input type="time" id="preference_end_time" name="preference_end_time" class="time-picker">
+                        </div>
+                    </div>
+                    <input type="hidden" id="preference_value" name="preference_value" required>
+                    <div class="help-text">Select the time range for this preference using the time pickers above</div>
                 </div>
             </div>
             <div class="form-row">
@@ -232,6 +349,27 @@
 </div>
 
 <script>
+// Function to show inline messages
+function showMessage(text, type = 'info') {
+    const messageContainer = document.getElementById('messageContainer');
+    messageContainer.textContent = text;
+    messageContainer.className = `message ${type}`;
+    messageContainer.style.display = 'block';
+    
+    // Auto-hide after 5 seconds for success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            messageContainer.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// Function to clear messages
+function clearMessage() {
+    const messageContainer = document.getElementById('messageContainer');
+    messageContainer.style.display = 'none';
+}
+
 // Load preferences and stats on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadPreferences();
@@ -247,9 +385,11 @@ async function loadPreferences() {
             updateStats(result.preferences);
         } else {
             document.getElementById('preferencesList').innerHTML = '<div class="error">Error loading preferences: ' + result.error + '</div>';
+            showMessage('Error loading preferences: ' + result.error, 'error');
         }
     } catch (error) {
         document.getElementById('preferencesList').innerHTML = '<div class="error">Error loading preferences: ' + error.message + '</div>';
+        showMessage('Error loading preferences: ' + error.message, 'error');
     }
 }
 
@@ -292,10 +432,6 @@ function displayPreferences(preferences) {
     // Add event listeners for delete buttons
     document.querySelectorAll('.remove-preference').forEach(button => {
         button.addEventListener('click', async function() {
-            if (!confirm('Are you sure you want to remove this volunteer preference?')) {
-                return;
-            }
-            
             const preferenceId = this.dataset.preferenceId;
             await deletePreference(preferenceId);
         });
@@ -333,6 +469,9 @@ function updateStats(preferences) {
 document.getElementById('volunteerForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
+    // Clear any previous messages
+    clearMessage();
+    
     const formData = new FormData(this);
     const data = Object.fromEntries(formData);
     
@@ -351,14 +490,14 @@ document.getElementById('volunteerForm').addEventListener('submit', async functi
         const result = await response.json();
         
         if (result.success) {
-            alert('Volunteer preference added successfully!');
+            showMessage('Volunteer preference added successfully!', 'success');
             this.reset(); // Clear the form
             loadPreferences(); // Reload the preferences list
         } else {
-            alert('Error adding volunteer preference: ' + result.error);
+            showMessage('Error adding volunteer preference: ' + result.error, 'error');
         }
     } catch (error) {
-        alert('Error adding volunteer preference: ' + error.message);
+        showMessage('Error adding volunteer preference: ' + error.message, 'error');
     }
 });
 
@@ -371,15 +510,119 @@ async function deletePreference(preferenceId) {
         const result = await response.json();
         
         if (result.success) {
-            alert('Volunteer preference removed successfully!');
+            showMessage('Volunteer preference removed successfully!', 'success');
             loadPreferences(); // Reload the preferences list
         } else {
-            alert('Error removing volunteer preference: ' + result.error);
+            showMessage('Error removing volunteer preference: ' + result.error, 'error');
         }
     } catch (error) {
-        alert('Error removing volunteer preference: ' + error.message);
+        showMessage('Error removing volunteer preference: ' + error.message, 'error');
     }
 }
+
+// Time Picker Functionality
+function updatePreferenceValue() {
+    const startTime = document.getElementById('preference_start_time').value;
+    const endTime = document.getElementById('preference_end_time').value;
+    const hiddenField = document.getElementById('preference_value');
+    
+    if (startTime && endTime) {
+        // Convert 24-hour format to 12-hour format for display
+        const startFormatted = formatTimeTo12Hour(startTime);
+        const endFormatted = formatTimeTo12Hour(endTime);
+        hiddenField.value = `${startFormatted}-${endFormatted}`;
+    } else {
+        hiddenField.value = '';
+    }
+}
+
+function formatTimeTo12Hour(time24) {
+    const [hours, minutes] = time24.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes}${ampm}`;
+}
+
+function parseTimeRange(timeRange) {
+    // Parse time ranges like "6AM-8AM", "10PM-12AM" back to 24-hour format
+    if (!timeRange) return { start: '', end: '' };
+    
+    const parts = timeRange.split('-');
+    if (parts.length !== 2) return { start: '', end: '' };
+    
+    const start = parseTime12HourTo24Hour(parts[0].trim());
+    const end = parseTime12HourTo24Hour(parts[1].trim());
+    
+    return { start, end };
+}
+
+function parseTime12HourTo24Hour(time12) {
+    const match = time12.match(/(\d{1,2}):?(\d{2})?(AM|PM)/i);
+    if (!match) return '';
+    
+    let hour = parseInt(match[1]);
+    const minute = match[2] || '00';
+    const ampm = match[3].toUpperCase();
+    
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    
+    return `${hour.toString().padStart(2, '0')}:${minute}`;
+}
+
+// Set up event listeners for time pickers
+document.addEventListener('DOMContentLoaded', function() {
+    const startTimePicker = document.getElementById('preference_start_time');
+    const endTimePicker = document.getElementById('preference_end_time');
+    
+    if (startTimePicker && endTimePicker) {
+        startTimePicker.addEventListener('change', updatePreferenceValue);
+        endTimePicker.addEventListener('change', updatePreferenceValue);
+        
+        // Set default times for common preferences
+        startTimePicker.addEventListener('focus', function() {
+            const preferenceType = document.getElementById('preference_type').value;
+            if (!this.value) {
+                if (preferenceType === 'early_morning') {
+                    this.value = '06:00';
+                    if (!endTimePicker.value) endTimePicker.value = '08:00';
+                } else if (preferenceType === 'late_evening') {
+                    this.value = '22:00';
+                    if (!endTimePicker.value) endTimePicker.value = '24:00';
+                } else if (preferenceType === 'weekend') {
+                    this.value = '09:00';
+                    if (!endTimePicker.value) endTimePicker.value = '17:00';
+                }
+                updatePreferenceValue();
+            }
+        });
+    }
+    
+    // Handle preference type changes to suggest appropriate times
+    const preferenceTypeSelect = document.getElementById('preference_type');
+    if (preferenceTypeSelect) {
+        preferenceTypeSelect.addEventListener('change', function() {
+            const startTime = document.getElementById('preference_start_time');
+            const endTime = document.getElementById('preference_end_time');
+            
+            // Only set defaults if fields are empty
+            if (!startTime.value && !endTime.value) {
+                if (this.value === 'early_morning') {
+                    startTime.value = '06:00';
+                    endTime.value = '08:00';
+                } else if (this.value === 'late_evening') {
+                    startTime.value = '22:00';
+                    endTime.value = '23:59';
+                } else if (this.value === 'weekend') {
+                    startTime.value = '09:00';
+                    endTime.value = '17:00';
+                }
+                updatePreferenceValue();
+            }
+        });
+    }
+});
 </script>
 {% endblock %}
 
