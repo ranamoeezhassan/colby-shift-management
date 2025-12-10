@@ -137,7 +137,6 @@ def seed_database():
         
         # Create staffing needs (comprehensive coverage)
         print("Creating staffing needs...")
-        from models import StaffingNeeds
         
         # Check if staffing needs already exist
         existing_needs = StaffingNeeds.query.filter_by(term_id=term.term_id).count()
@@ -189,7 +188,6 @@ def seed_database():
         
         # Create availability for all students
         print("Creating student availability...")
-        from models import Availability
         
         # Check if availability already exists
         existing_avail = Availability.query.filter_by(term_id=term.term_id).count()

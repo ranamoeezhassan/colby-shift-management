@@ -1,6 +1,62 @@
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 let currentTermId = null;
 
+// Helpers
+function createDayCell(day, blocksArray) {
+  const td = document.createElement('td');
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'day-cell';
+  wrapper.dataset.day = day;
+
+  const blocksContainer = document.createElement('div');
+  blocksContainer.className = 'blocks-container';
+
+  (blocksArray || []).forEach(block => {
+    const pill = document.createElement('span');
+    pill.className = 'block-pill';
+    pill.dataset.range = block;
+    pill.textContent = block.replace('-', '–'); // nicer dash
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'block-pill-remove';
+    remove.textContent = '×';
+
+    pill.appendChild(remove);
+    blocksContainer.appendChild(pill);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'add-block-btn';
+  addBtn.textContent = '+ Add';
+  addBtn.dataset.day = day;
+
+  wrapper.appendChild(blocksContainer);
+  wrapper.appendChild(addBtn);
+  td.appendChild(wrapper);
+
+  return td;
+}
+
+let autoSaveTimeout = null;
+
+function scheduleAutoSave() {
+  // If no term selected yet, don't bother
+  if (!currentTermId) return;
+
+  // Debounce so we don't spam the server if user clicks fast
+  if (autoSaveTimeout) {
+    clearTimeout(autoSaveTimeout);
+  }
+
+  autoSaveTimeout = setTimeout(() => {
+    saveAvailability();
+  }, 400);
+}
+
+
 // ---------- Alerts ----------
 function showAlert(message, type = 'info') {
   const container = document.getElementById('alert-container');
@@ -94,6 +150,7 @@ function renderAvailabilityTable(availability) {
     const tr = document.createElement('tr');
 
     const nameTd = document.createElement('td');
+    nameTd.className = 'name-cell';
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.value = studentName;
@@ -103,14 +160,8 @@ function renderAvailabilityTable(availability) {
     tr.appendChild(nameTd);
 
     DAYS.forEach(day => {
-      const td = document.createElement('td');
-      const input = document.createElement('input');
-      input.type = 'text';
       const blocks = dayMap[day] || [];
-      input.value = blocks.join(', ');
-      input.placeholder = 'e.g. 09:00-17:00';
-      input.setAttribute('data-day', day);
-      td.appendChild(input);
+      const td = createDayCell(day, blocks);
       tr.appendChild(td);
     });
 
@@ -132,6 +183,7 @@ function renderAvailabilityTable(availability) {
   newTr.style.background = '#f8f9fb';
 
   const newNameTd = document.createElement('td');
+  newNameTd.className = 'name-cell';
   const newNameInput = document.createElement('input');
   newNameInput.type = 'text';
   newNameInput.placeholder = '➕ Add new student...';
@@ -140,12 +192,7 @@ function renderAvailabilityTable(availability) {
   newTr.appendChild(newNameTd);
 
   DAYS.forEach(day => {
-    const td = document.createElement('td');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = '09:00-17:00';
-    input.setAttribute('data-day', day);
-    td.appendChild(input);
+    const td = createDayCell(day, []); // empty blocks
     newTr.appendChild(td);
   });
 
@@ -166,18 +213,28 @@ function collectRows() {
   trList.forEach(tr => {
     const nameInput = tr.querySelector('.student-name-input');
     const studentName = nameInput?.value.trim();
-    if (!studentName) return;
+    if (!studentName) return; // skip the empty "new row"
 
     const rowObj = { student_name: studentName };
+
     DAYS.forEach(day => {
-      const input = tr.querySelector(`input[data-day="${day}"]`);
-      rowObj[day] = input ? input.value.trim() : "";
+      const cell = tr.querySelector(`.day-cell[data-day="${day}"]`);
+      if (!cell) {
+        rowObj[day] = '';
+        return;
+      }
+
+      const pills = Array.from(cell.querySelectorAll('.block-pill'));
+      const ranges = pills.map(p => p.dataset.range || p.textContent.trim());
+      rowObj[day] = ranges.join(', ');
     });
+
     rows.push(rowObj);
   });
 
   return rows;
 }
+
 
 async function saveAvailability() {
   if (!currentTermId) {
@@ -417,6 +474,57 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportBtn = document.getElementById('exportCsvButton');
   if (exportBtn) {
     exportBtn.addEventListener('click', exportCsv);
+  }
+
+  const availabilityBody = document.getElementById('availabilityBody');
+  if (availabilityBody) {
+    availabilityBody.addEventListener('click', (e) => {
+      const addBtn = e.target.closest('.add-block-btn');
+      const removeBtn = e.target.closest('.block-pill-remove');
+
+      // Add new block
+      if (addBtn) {
+        const day = addBtn.dataset.day;
+        const cell = addBtn.closest('.day-cell');
+        if (!cell) return;
+
+        const input = window.prompt(`Enter time block for ${day} (HH:MM-HH:MM)`, '09:00-11:00');
+        if (!input) return;
+
+        const trimmed = input.trim();
+        if (!/^\d{2}:\d{2}\s*-\s*\d{2}:\d{2}$/.test(trimmed)) {
+          showAlert('Please use format HH:MM-HH:MM, e.g. 09:00-11:00', 'error');
+          return;
+        }
+
+        const blocksContainer = cell.querySelector('.blocks-container');
+        if (!blocksContainer) return;
+
+        const pill = document.createElement('span');
+        pill.className = 'block-pill';
+        pill.dataset.range = trimmed;
+        pill.textContent = trimmed.replace('-', '–');
+
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'block-pill-remove';
+        rm.textContent = '×';
+        pill.appendChild(rm);
+
+        blocksContainer.appendChild(pill);
+        scheduleAutoSave();
+      }
+
+      // Remove existing block
+      if (removeBtn) {
+        const pill = removeBtn.closest('.block-pill');
+        if (pill) {
+          pill.remove();
+
+          scheduleAutoSave();
+        }
+      }
+    });
   }
   
 });
