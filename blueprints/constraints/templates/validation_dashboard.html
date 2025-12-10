@@ -469,16 +469,34 @@ async function generateNewReport() {
             })
         });
         
-        const result = await response.json();
-        
-        if (result.success) {
-            showSuccess(`Report generated successfully! Found ${result.total_violations} violations.`);
-            // Redirect to detailed report view
-            if (result.redirect_url) {
-                window.location.href = result.redirect_url;
+        if (response.ok) {
+            // Check if the response is a PDF
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/pdf')) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `validation_report_${new Date().toISOString().slice(0,19).replace(/:/g, "")}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                showSuccess('Report generated and downloaded successfully!');
+            } else {
+                // Handle JSON response if any (e.g. error)
+                const result = await response.json();
+                if (result.success) {
+                    showSuccess(`Report generated successfully! Found ${result.total_violations} violations.`);
+                    if (result.redirect_url) {
+                        window.location.href = result.redirect_url;
+                    }
+                } else {
+                    showError('Failed to generate report: ' + result.error);
+                }
             }
         } else {
-            showError('Failed to generate report: ' + result.error);
+            showError('Failed to generate report: Server returned ' + response.status);
         }
     } catch (error) {
         showError('Error generating report: ' + error.message);

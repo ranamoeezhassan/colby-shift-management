@@ -39,7 +39,7 @@ def app():
     
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
     
     # Register blueprints for route testing
     from blueprints.constraints import constraints_bp
@@ -65,19 +65,17 @@ def app():
     from blueprints.outputs import routes as outputs_routes
     app.register_blueprint(real_outputs_bp)
     
+    # Register real availability blueprint for testing
+    from blueprints.availability import availability_bp as real_availability_bp
+    from blueprints.availability import routes as availability_routes
+    app.register_blueprint(real_availability_bp)
+    
     # Register dummy blueprints for other app areas to prevent URL build errors
     from flask import Blueprint, render_template_string
 
     # Create dummy blueprints to satisfy base template navigation
-    availability_bp = Blueprint('availability', __name__, url_prefix='/availability')
     staffing_bp = Blueprint('staffing', __name__, url_prefix='/staffing') 
     ai_bp = Blueprint('ai', __name__, url_prefix='/ai', template_folder=os.path.join(project_root, 'blueprints/ai/templates'), static_folder=os.path.join(project_root, 'blueprints/ai/static'))
-
-    @availability_bp.route('/')
-    def index(): return "Availability Index"
-    
-    @availability_bp.route('/page')
-    def availability_page(): return "Availability Page"
 
     @staffing_bp.route('/')
     def index(): return "Staffing Index"
@@ -87,7 +85,6 @@ def app():
         # Minimal dummy template for ask_bar.html
         return render_template_string('<div id="ai-bar">AI Bar</div>')
 
-    app.register_blueprint(availability_bp)
     app.register_blueprint(staffing_bp)
     app.register_blueprint(ai_bp)
     

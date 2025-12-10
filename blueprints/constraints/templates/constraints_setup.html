@@ -304,6 +304,45 @@
     border: 1px solid #ffeaa7;
 }
 
+/* Message styles for inline feedback */
+.message {
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    font-weight: 500;
+    display: none;
+    animation: slideIn 0.3s ease-out;
+}
+
+.message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message.warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Volunteer preferences styling */
 .form-control option[selected] {
     background: #d4edda;
@@ -336,6 +375,9 @@
 
 {% block content %}
 <div class="setup-container">
+    <!-- Message container for feedback -->
+    <div id="messageContainer" class="message"></div>
+    
     <!-- Saved Constraints Summary -->
     <div id="saved-constraints-summary" class="setup-card" style="display:none;">
         <div class="section-header">
@@ -480,7 +522,7 @@
                             <input type="time" id="custom_start_time" name="custom_start_time" class="form-control">
                         </div>
                         <div class="form-group">
-                            <label for="custom_end_time">Don't end shifts after:</label>
+                            <label for="custom_end_time">End shifts after:</label>
                             <input type="time" id="custom_end_time" name="custom_end_time" class="form-control">
                         </div>
                         <div class="form-group">
@@ -624,9 +666,33 @@
 let currentStep = 1;
 const totalSteps = 3;
 
+// Function to show inline messages
+function showMessage(text, type = 'info') {
+    const messageContainer = document.getElementById('messageContainer');
+    messageContainer.textContent = text;
+    messageContainer.className = `message ${type}`;
+    messageContainer.style.display = 'block';
+    
+    // Auto-hide after 5 seconds for success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            messageContainer.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// Function to clear messages
+function clearMessage() {
+    const messageContainer = document.getElementById('messageContainer');
+    messageContainer.style.display = 'none';
+}
+
 // Step navigation
 function nextStep() {
     if (currentStep < totalSteps) {
+        // Clear any previous messages
+        clearMessage();
+        
         // Validate current step before proceeding
         if (validateStep(currentStep)) {
             currentStep++;
@@ -699,7 +765,7 @@ function validateBasicRules() {
     const maxDuration = parseFloat(document.getElementById('max_shift_duration').value);
     
     if (minDuration >= maxDuration) {
-        alert('Maximum shift duration must be greater than minimum duration');
+        showMessage('Maximum shift duration must be greater than minimum duration', 'error');
         return false;
     }
     
@@ -753,6 +819,9 @@ function updateCheckboxStyling() {
 }
 
 async function saveConstraints() {
+    // Clear any previous messages
+    clearMessage();
+    
     const saveBtn = document.getElementById('save-btn');
     const originalText = saveBtn.innerHTML;
     saveBtn.innerHTML = '⏳ Saving...';
@@ -800,13 +869,15 @@ async function saveConstraints() {
             // Redirect triggers fresh load; optional flag for toast
             sessionStorage.setItem('constraintsSaved', '1');
             
-            alert('Constraints saved successfully!');
-            window.location.href = '{{ url_for("constraints.index") }}';
+            showMessage('Constraints saved successfully!', 'success');
+            setTimeout(() => {
+                window.location.href = '{{ url_for("constraints.index") }}';
+            }, 2000); // Delay redirect to show success message
         } else {
-            alert('Error saving constraints: ' + result.error);
+            showMessage('Error saving constraints: ' + result.error, 'error');
         }
     } catch (error) {
-        alert('Error saving constraints: ' + error.message);
+        showMessage('Error saving constraints: ' + error.message, 'error');
     } finally {
         saveBtn.innerHTML = originalText;
         saveBtn.disabled = false;

@@ -883,7 +883,7 @@ class UndesirableTimeWindow:
     
     @classmethod
     def query_by_policy(cls, policy_id):
-        policy = Policy.query.get(policy_id)
+        policy = db.session.get(Policy, policy_id)
         if policy:
             windows = policy.get_undesirable_windows()
             return [cls(**window) for window in windows]
@@ -973,7 +973,7 @@ class PolicyAuditLog:
     @classmethod
     def log_policy_change(cls, policy_id, changed_by_id, change_type, field_name=None, 
                          old_value=None, new_value=None, change_reason=None, **kwargs):
-        policy = Policy.query.get(policy_id)
+        policy = db.session.get(Policy, policy_id)
         if policy:
             policy.log_policy_change(changed_by_id, change_type, field_name, old_value, new_value, change_reason)
 
