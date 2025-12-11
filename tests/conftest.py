@@ -74,18 +74,17 @@ def app():
     from flask import Blueprint, render_template_string
 
     # Create dummy blueprints to satisfy base template navigation
-    staffing_bp = Blueprint('staffing', __name__, url_prefix='/staffing') 
+    # Register the real staffing blueprint for testing
+    from blueprints.staffing import staffing_bp
+    from blueprints.staffing import routes as staffing_routes
+    app.register_blueprint(staffing_bp)
+
+    # Register dummy AI blueprint for template navigation
     ai_bp = Blueprint('ai', __name__, url_prefix='/ai', template_folder=os.path.join(project_root, 'blueprints/ai/templates'), static_folder=os.path.join(project_root, 'blueprints/ai/static'))
-
-    @staffing_bp.route('/')
-    def index(): return "Staffing Index"
-
     @ai_bp.route('/ask_bar.html')
     def ask_bar():
         # Minimal dummy template for ask_bar.html
         return render_template_string('<div id="ai-bar">AI Bar</div>')
-
-    app.register_blueprint(staffing_bp)
     app.register_blueprint(ai_bp)
     
     return app
