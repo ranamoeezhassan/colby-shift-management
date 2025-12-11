@@ -564,8 +564,8 @@ class Policy(db.Model):
         
         return violations
     
-    def track_undesirable_shift(self, user_id, shift_id, undesirable_type, weight=1.0):
-        """Track when a student gets an undesirable shift"""
+    def track_undesirable_shift(self, user_id, shift_id, undesirable_type, weight):
+        """Track an undesirable shift assignment for reporting"""
         if not self.undesirable_tracking:
             self.undesirable_tracking = []
         
@@ -573,9 +573,9 @@ class Policy(db.Model):
             'tracking_id': len(self.undesirable_tracking) + 1,
             'user_id': user_id,
             'term_id': self.term_id,
-            'shift_id': shift_id,
-            'undesirable_type': undesirable_type,
-            'undesirable_weight': weight,
+            'shift_id': shift_id.strftime('%H:%M') if hasattr(shift_id, 'strftime') else str(shift_id),
+            'undesirable_type': undesirable_type.strftime('%H:%M') if hasattr(undesirable_type, 'strftime') else str(undesirable_type),
+            'undesirable_weight': weight.isoformat() if hasattr(weight, 'isoformat') else str(weight),
             'assigned_date': datetime.now().isoformat(),
             'manual_override': False
         }
@@ -885,7 +885,10 @@ class UndesirableTimeWindow:
     
     @classmethod
     def query_by_policy(cls, policy_id):
-        policy = Policy.query.get(policy_id)
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=db.engine)
+        session = Session()
+        policy = session.get(Policy, policy_id)
         if policy:
             windows = policy.get_undesirable_windows()
             return [cls(**window) for window in windows]
@@ -949,7 +952,10 @@ class PolicyAuditLog:
     @classmethod
     def log_policy_change(cls, policy_id, changed_by_id, change_type, field_name=None, 
                          old_value=None, new_value=None, change_reason=None, **kwargs):
-        policy = Policy.query.get(policy_id)
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=db.engine)
+        session = Session()
+        policy = session.get(Policy, policy_id)
         if policy:
             policy.log_policy_change(changed_by_id, change_type, field_name, old_value, new_value, change_reason)
 
